@@ -81,6 +81,20 @@ Do not assume these interfaces are identical on every firmware or model.
 - [Article draft](docs/article-draft.md)
 - [Research references](research/references.md)
 
+## Run Gini speech on Windows (experimental repo integration)
+
+This command packages the speech pipeline previously heard on the tested camera. This repository version has **not yet been rerun against the hardware**. It needs Node.js, Windows PowerShell with `System.Speech`, and your local ESee CameraSDK at `esee-sdk/CameraSDK/play.js`. The SDK is not bundled; check its license before redistribution. The tested SDK needed its transport selector changed from the truthy string `"ws"` to `false` to connect with plain WebSocket.
+
+1. Clone this repository on the PC connected to the camera Wi-Fi. Place your **existing working, patched** CameraSDK in `esee-sdk/` under the clone. Do not copy recordings, secrets, or device IDs into Git.
+2. Copy `.env.example` to `.env` and set your camera IP, port, username and password. `.env` is ignored by Git.
+3. In PowerShell from the repository root run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\gini-say.ps1 "Hello, I am Gini."
+```
+
+The wrapper synthesizes a temporary 16 kHz WAV, transmits 8 kHz G711A frames through native talkback, and removes the WAV afterward. The voice still depends on the SAPI voices installed on Windows; a youthful female voice is a later milestone. If a local SDK uses a different layout, adjust its path in `src/audio/talkback.js`.
+
 ## Current next milestone
 
 **Capture the camera microphone cleanly on the PC.**
