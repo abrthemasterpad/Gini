@@ -1,5 +1,11 @@
 # Gini
 
+![Gini project cover featuring the Trueview T18205-A pan-tilt camera and verified video, movement, and speech features](assets/gini-t18205-a-cover.webp)
+
+**Gini: local video, pan/tilt control, and generated camera-speaker speech on the Trueview T18205-A.**
+
+An open-source Trueview T18205-A robot-camera project exploring local ESee/Juan camera control, Bubble H.264 video, PTZ, and G711A talkback. Speech recognition, wake word, person tracking, and autonomous conversation are future work.
+
 Gini is an open-source project that turns a low-cost Trueview / ESee-compatible PTZ Wi-Fi camera into a locally controlled AI robot head.
 
 The first tested device is the **Trueview T18205-A**. The goal is to reuse the camera's existing hardware as much as possible:
