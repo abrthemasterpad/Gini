@@ -1,0 +1,36 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Local camera / generated media
+*.wav
+*.pcm
+*.g711
+*.g711a
+*.mp4
+*.h264
+captures/
+recordings/
+logs/
+
+# Local third-party research copies
+esee-sdk/
+third_party/
+
+# Backups / scratch
+*.backup
+*.bak
+*.tmp
+probe/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
