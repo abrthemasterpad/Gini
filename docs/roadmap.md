@@ -27,8 +27,8 @@ We do not mark a feature complete because an API exists. It must work on the phy
 
 ## Phase 1 — Gini Core
 
-- 📋 Sanitize and import tested local scripts
-- 📋 Configuration via environment variables
+- 🧪 Import and sanitize speech scripts; repository version awaits hardware retest
+- 🧪 Speech configuration via environment variables
 - 📋 One CLI entry point
 - 📋 Commands: say, left, right, up, down, status
 - 📋 `gini doctor` health checks
