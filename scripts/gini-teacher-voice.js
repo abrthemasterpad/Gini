@@ -68,6 +68,10 @@ async function health() {
   }
 }
 
+async function catalog() {
+  return requestJson(REBUILDO_URL + "/voice/presets");
+}
+
 async function synthesizeWav({
   language,
   text,
@@ -246,6 +250,7 @@ async function speak(options) {
 
 module.exports = {
   health,
+  catalog,
   synthesizeWav,
   convertForCamera,
   playCameraWav,
