@@ -3,6 +3,8 @@ import os
 import subprocess
 import sys
 import time
+import threading
+import queue
 
 try:
     import cv2
@@ -115,6 +117,62 @@ def direction_for_target(
     return ("down" if ey > 0 else "up"), ex, ey
 
 
+def map_ptz_direction(target_direction, invert_x=True, invert_y=False):
+    if target_direction is None:
+        return None
+
+    if invert_x:
+        if target_direction == "left":
+            return "right"
+        if target_direction == "right":
+            return "left"
+
+    if invert_y:
+        if target_direction == "up":
+            return "down"
+        if target_direction == "down":
+            return "up"
+
+    return target_direction
+
+
+class BridgeReader:
+    def __init__(self, process):
+        self.process = process
+        self.lines = queue.Queue()
+        self.thread = threading.Thread(target=self._pump, daemon=True)
+        self.thread.start()
+
+    def _pump(self):
+        try:
+            for line in self.process.stdout:
+                text = line.strip()
+                if text:
+                    print("[PTZ]", text)
+                    self.lines.put(text)
+        finally:
+            self.lines.put("__EOF__")
+
+    def wait_for(self, predicate, timeout):
+        deadline = time.time() + timeout
+
+        while time.time() < deadline:
+            remaining = max(0.05, deadline - time.time())
+
+            try:
+                text = self.lines.get(timeout=remaining)
+            except queue.Empty:
+                return None
+
+            if text == "__EOF__":
+                return None
+
+            if predicate(text):
+                return text
+
+        return None
+
+
 def start_ffmpeg(source, width, height, fps):
     vf = f"scale={width}:{height},fps={fps}"
 
@@ -162,25 +220,34 @@ def start_ptz_bridge(pulse_ms):
     )
 
 
-def wait_for_bridge_ready(bridge, timeout=10.0):
-    deadline = time.time() + timeout
+def wait_for_bridge_ready(reader, timeout=10.0):
+    text = reader.wait_for(
+        lambda line: line == "GINI_PTZ_READY",
+        timeout
+    )
+    return text is not None
 
-    while time.time() < deadline:
-        line = bridge.stdout.readline()
 
-        if not line:
-            if bridge.poll() is not None:
-                return False
-            time.sleep(0.05)
-            continue
+def send_ptz_and_wait(bridge, reader, direction, timeout=3.0):
+    bridge.stdin.write(direction + "\n")
+    bridge.stdin.flush()
 
-        text = line.strip()
-        print("[PTZ]", text)
+    prefix = "GINI_PTZ_ACK "
 
-        if text == "READY":
-            return True
+    line = reader.wait_for(
+        lambda text: text.startswith(prefix),
+        timeout
+    )
 
-    return False
+    if line is None:
+        return False, "timeout"
+
+    payload = line[len(prefix):]
+
+    if payload == "MOVED " + direction:
+        return True, payload
+
+    return False, payload
 
 
 def main():
@@ -198,7 +265,8 @@ def main():
     parser.add_argument("--deadzone-y", type=float, default=float(os.environ.get("GINI_VISION_DEADZONE_Y", "0.16")))
     parser.add_argument("--stable-frames", type=int, default=int(os.environ.get("GINI_VISION_STABLE_FRAMES", "3")))
     parser.add_argument("--cooldown-ms", type=int, default=int(os.environ.get("GINI_VISION_COOLDOWN_MS", "750")))
-    parser.add_argument("--pulse-ms", type=int, default=int(os.environ.get("GINI_VISION_PULSE_MS", "180")))
+    parser.add_argument("--pulse-ms", type=int, default=int(os.environ.get("GINI_VISION_PULSE_MS", "120")))
+    parser.add_argument("--post-move-settle-ms", type=int, default=int(os.environ.get("GINI_VISION_POST_MOVE_SETTLE_MS", "900")))
     parser.add_argument("--max-live-moves", type=int, default=int(os.environ.get("GINI_VISION_MAX_LIVE_MOVES", "8")))
     parser.add_argument("--live-seconds", type=int, default=int(os.environ.get("GINI_VISION_LIVE_SECONDS", "60")))
     mirror_default = os.environ.get("GINI_VISION_MIRROR_X", "1") != "0"
@@ -214,6 +282,36 @@ def main():
         dest="mirror_x",
         action="store_false",
         help="Disable horizontal mirror correction."
+    )
+
+    invert_x_default = os.environ.get("GINI_VISION_PTZ_INVERT_X", "1") != "0"
+    parser.add_argument(
+        "--invert-ptz-x",
+        dest="invert_ptz_x",
+        action="store_true",
+        default=invert_x_default,
+        help="Invert LEFT/RIGHT motor commands for vision tracking only."
+    )
+    parser.add_argument(
+        "--no-invert-ptz-x",
+        dest="invert_ptz_x",
+        action="store_false",
+        help="Do not invert LEFT/RIGHT motor commands."
+    )
+
+    invert_y_default = os.environ.get("GINI_VISION_PTZ_INVERT_Y", "0") != "0"
+    parser.add_argument(
+        "--invert-ptz-y",
+        dest="invert_ptz_y",
+        action="store_true",
+        default=invert_y_default,
+        help="Invert UP/DOWN motor commands for vision tracking only."
+    )
+    parser.add_argument(
+        "--no-invert-ptz-y",
+        dest="invert_ptz_y",
+        action="store_false",
+        help="Do not invert UP/DOWN motor commands."
     )
     parser.add_argument("--live", action="store_true", help="Actually move Gini. Default is dry-run.")
     parser.add_argument("--preview", action="store_true", help="Show a local preview window.")
@@ -264,10 +362,13 @@ def main():
     print("Source:", args.source)
     print("Processing:", f"{args.width}x{args.height} @ {args.fps:g} FPS")
     print("Mirror correction:", "ON" if args.mirror_x else "OFF")
+    print("Vision PTZ invert X:", "ON" if args.invert_ptz_x else "OFF")
+    print("Vision PTZ invert Y:", "ON" if args.invert_ptz_y else "OFF")
     print("Target point:", args.target_x, args.target_y)
     print("Dead zone:", args.deadzone_x, args.deadzone_y)
     print("Stable frames:", args.stable_frames)
     print("PTZ pulse:", args.pulse_ms, "ms")
+    print("Post-move settle:", args.post_move_settle_ms, "ms")
     if args.live:
         print("Live safety budget:", args.max_live_moves, "moves /", args.live_seconds, "seconds")
     print("Frames are not recorded.")
@@ -275,12 +376,18 @@ def main():
 
     ffmpeg = start_ffmpeg(args.source, args.width, args.height, args.fps)
     bridge = None
+    bridge_reader = None
 
     if args.live:
         bridge = start_ptz_bridge(args.pulse_ms)
+        bridge_reader = BridgeReader(bridge)
 
-        if not wait_for_bridge_ready(bridge):
+        if not wait_for_bridge_ready(bridge_reader):
             ffmpeg.terminate()
+            try:
+                bridge.terminate()
+            except Exception:
+                pass
             raise SystemExit("Native PTZ bridge did not become ready.")
 
     frame_bytes = args.width * args.height * 3
@@ -292,6 +399,9 @@ def main():
     last_status_at = 0.0
     live_moves = 0
     live_started_at = time.time()
+    ignore_frames_until = 0.0
+    moved_since_last_face = False
+    lost_after_move_reported = False
 
     try:
         while True:
@@ -307,10 +417,27 @@ def main():
             frame = np.frombuffer(raw, dtype=np.uint8).reshape((args.height, args.width, 3)).copy()
 
             # The tested Gini camera feed is horizontally mirrored.
-            # Flip BEFORE detection so both preview and PTZ direction mapping
-            # match the person's real-world left/right movement.
+            # Flip BEFORE detection so preview/target coordinates match the
+            # person's real-world left/right. Physical PTZ inversion is handled
+            # separately because motor direction semantics are independent.
             if args.mirror_x:
                 frame = cv2.flip(frame, 1)
+
+            if args.live and time.time() < ignore_frames_until:
+                if args.preview:
+                    cv2.putText(
+                        frame,
+                        "SETTLING",
+                        (12, 54),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.65,
+                        (255, 255, 255),
+                        2
+                    )
+                    cv2.imshow("Gini Vision v0.5", frame)
+                    if cv2.waitKey(1) & 0xFF in (27, ord("q")):
+                        break
+                continue
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray = cv2.equalizeHist(gray)
@@ -325,6 +452,10 @@ def main():
             target = choose_target(faces, previous_center, args.width, args.height)
 
             if target is None:
+                if args.live and moved_since_last_face and not lost_after_move_reported:
+                    print("TRACK HOLD: target lost after PTZ move -> waiting, no repeat movement")
+                    lost_after_move_reported = True
+
                 if time.time() - last_seen_at > 1.5:
                     previous_center = None
                     stable_direction = None
@@ -357,6 +488,12 @@ def main():
             x, y, w, h, cx, cy, _ = target
             previous_center = (cx, cy)
             last_seen_at = time.time()
+
+            if moved_since_last_face:
+                moved_since_last_face = False
+                lost_after_move_reported = False
+                stable_direction = None
+                stable_count = 0
 
             direction, ex, ey = direction_for_target(
                 target,
@@ -392,25 +529,56 @@ def main():
                     )
                 )
 
+                ptz_direction = map_ptz_direction(
+                    direction,
+                    args.invert_ptz_x,
+                    args.invert_ptz_y
+                )
+
                 if bridge is not None:
                     if args.max_live_moves > 0 and live_moves >= args.max_live_moves:
                         print("LIVE SAFETY: movement budget reached -> stopping tracker")
                         break
 
-                    bridge.stdin.write(direction + "\n")
-                    bridge.stdin.flush()
+                    print(
+                        "TARGET {} -> PTZ {}".format(
+                            direction.upper(),
+                            ptz_direction.upper()
+                        )
+                    )
+
+                    ok, ack = send_ptz_and_wait(
+                        bridge,
+                        bridge_reader,
+                        ptz_direction,
+                        timeout=3.0
+                    )
+
+                    if not ok:
+                        print("LIVE SAFETY: PTZ command not acknowledged ->", ack)
+                        break
+
                     live_moves += 1
                     print(
                         "LIVE MOVE {}/{}: {}".format(
                             live_moves,
                             args.max_live_moves if args.max_live_moves > 0 else "unlimited",
-                            direction.upper()
+                            ptz_direction.upper()
                         )
                     )
-                else:
-                    print("DRY RUN: would move", direction.upper())
 
-                last_move_at = now
+                    moved_since_last_face = True
+                    lost_after_move_reported = False
+                    ignore_frames_until = time.time() + (args.post_move_settle_ms / 1000.0)
+                else:
+                    print(
+                        "DRY RUN: target {} -> would command PTZ {}".format(
+                            direction.upper(),
+                            ptz_direction.upper()
+                        )
+                    )
+
+                last_move_at = time.time()
                 stable_count = 0
             elif direction is None and now - last_status_at > 1.5:
                 print(
