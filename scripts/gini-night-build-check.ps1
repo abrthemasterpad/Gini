@@ -9,7 +9,9 @@ Write-Host "No microphone, no camera speaker, no PTZ, no camera connection." -Fo
 Write-Host ""
 
 $files = @(
+    "gini-env.js",
     "gini-assistant-security.js",
+    "gini-skills.js",
     "gini-assistant-memory.js",
     "gini-assistant-brain.js",
     "gini-assistant-console.js",
