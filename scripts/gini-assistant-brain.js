@@ -1,5 +1,7 @@
 "use strict";
 
+require("./gini-env");
+
 const {
   sanitizeDecision,
   redactSecrets
