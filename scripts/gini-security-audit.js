@@ -1,5 +1,7 @@
 "use strict";
 
+require("./gini-env");
+
 const fs = require("fs");
 const path = require("path");
 
