@@ -18,13 +18,10 @@ const STREAM = Number(process.env.GINI_CAMERA_STREAM || 0);
 
 const SPEECH_THRESHOLD_DB = Number(process.env.GINI_SPEECH_THRESHOLD_DB || -36);
 const STEP = Number(process.env.GINI_PTZ_STEP || 1);
-const NATIVE_PTZ_SPEED = Math.max(
-  1,
-  Math.min(5, Number(process.env.GINI_NATIVE_PTZ_SPEED || 3))
-);
+const NATIVE_PTZ_PARAM = 6;
 const NATIVE_PTZ_MOVE_MS = Math.max(
   100,
-  Number(process.env.GINI_NATIVE_PTZ_MOVE_MS || 250)
+  Number(process.env.GINI_NATIVE_PTZ_MOVE_MS || 1200)
 );
 
 const FFMPEG = "ffmpeg.exe";
@@ -340,16 +337,17 @@ async function nativePtz(action) {
   console.log(
     "NATIVE PTZ:",
     action,
-    "speed=" + NATIVE_PTZ_SPEED,
+    "param=" + NATIVE_PTZ_PARAM,
     "duration=" + duration + "ms"
   );
 
-  // Keep PTZ on the same native WebSocket session as the live mic.
-  // Hardware test proved this path preserves AAC, unlike the old CGI PTZ.
-  Player.ptz_ctrl("", IP, 0, type, NATIVE_PTZ_SPEED);
+  // Exact CameraSDK demo values, now hardware-verified:
+  // movement types 2/3/4/5 use param=6; STOP uses type=0,param=0.
+  // This native path physically moves Gini and preserves AAC.
+  Player.ptz_ctrl("", IP, 0, type, NATIVE_PTZ_PARAM);
   await sleep(duration);
-  Player.ptz_ctrl("", IP, 0, 0, NATIVE_PTZ_SPEED);
-  await sleep(150);
+  Player.ptz_ctrl("", IP, 0, 0, 0);
+  await sleep(300);
 }
 
 async function performCommand(command) {
@@ -619,12 +617,12 @@ API.onrecvframeex = function (
 };
 
 console.log("==================================================");
-console.log("GINI CONTINUOUS BRAIN v0.3.1");
+console.log("GINI CONTINUOUS BRAIN v0.3.2");
 console.log("==================================================");
 console.log("Foreground native stream - no hidden background process");
 console.log("Wake word: Gini");
 console.log("VAD threshold:", SPEECH_THRESHOLD_DB, "dB");
-console.log("PTZ mode: native SDK (mic-safe)");
+console.log("PTZ mode: native SDK (physical + mic-safe)");
 console.log("Speaker mode:", SPEAKER_MODE, SPEAKER_MODE === "camera" ? "(Gini camera speaker)" : "(Windows fallback)");
 console.log("");
 
