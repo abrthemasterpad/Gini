@@ -6,16 +6,25 @@ param(
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $PSScriptRoot
-$Model = Join-Path $Root "models\\ggml-base-q5_1.bin"
+$Tools = Join-Path $Root "tools\whisper"
+$Model = Join-Path $Root "models\ggml-base-q5_1.bin"
 $Runtime = Join-Path $Root "runtime"
-$Transcript = Join-Path $Runtime "gini-transcript.txt"
+$TranscriptBase = Join-Path $Runtime "gini-transcript"
+$Transcript = "$TranscriptBase.txt"
 
 if (!(Test-Path $InputFile)) {
     throw "Audio file not found: $InputFile"
 }
 
 if (!(Test-Path $Model)) {
-    throw "Whisper model is missing. While internet is available run: powershell -ExecutionPolicy Bypass -File .\\scripts\\setup-stt.ps1"
+    throw "Whisper model is missing. Run scripts\setup-stt.ps1 while internet is available."
+}
+
+$WhisperCli = Get-ChildItem $Tools -Filter "whisper-cli.exe" -Recurse -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+
+if (!$WhisperCli) {
+    throw "whisper-cli.exe is missing. Run scripts\setup-stt.ps1 while internet is available."
 }
 
 New-Item -ItemType Directory -Force -Path $Runtime | Out-Null
@@ -23,32 +32,26 @@ Remove-Item $Transcript -ErrorAction SilentlyContinue
 
 $InputFull = (Resolve-Path $InputFile).Path
 
-Push-Location $Root
-try {
-    $filter = "aresample=16000,aformat=channel_layouts=mono,whisper=model=models/ggml-base-q5_1.bin:language=eval:queue=3:use_gpu=0:destination=runtime/gini-transcript.txt:format=text"
+$args = @(
+    "-m", $Model,
+    "-f", $InputFull,
+    "-l", "auto",
+    "-t", "4",
+    "--no-gpu",
+    "--no-timestamps",
+    "--output-txt",
+    "--output-file", $TranscriptBase,
+    "--no-prints"
+)
 
-    $args = @(
-        "-hide_banner",
-        "-loglevel", "warning",
-        "-i", $InputFull,
-        "-vn",
-        "-af", $filter,
-        "-f", "null",
-        "NUL"
-    )
+& $WhisperCli.FullName @args
 
-    & ffmpeg.exe @args
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "FFmpeg Whisper transcription failed with exit code $LASTEXITCODE"
-    }
-}
-finally {
-    Pop-Location
+if ($LASTEXITCODE -ne 0) {
+    throw "whisper.cpp transcription failed with exit code $LASTEXITCODE"
 }
 
 if (!(Test-Path $Transcript)) {
-    throw "Whisper completed but no transcript file was created."
+    throw "whisper.cpp completed but no transcript file was created."
 }
 
 $text = (Get-Content $Transcript -Raw).Trim()
