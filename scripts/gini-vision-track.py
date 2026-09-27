@@ -185,7 +185,9 @@ def main():
     parser.add_argument("--deadzone-y", type=float, default=float(os.environ.get("GINI_VISION_DEADZONE_Y", "0.16")))
     parser.add_argument("--stable-frames", type=int, default=int(os.environ.get("GINI_VISION_STABLE_FRAMES", "3")))
     parser.add_argument("--cooldown-ms", type=int, default=int(os.environ.get("GINI_VISION_COOLDOWN_MS", "750")))
-    parser.add_argument("--pulse-ms", type=int, default=int(os.environ.get("GINI_VISION_PULSE_MS", "250")))
+    parser.add_argument("--pulse-ms", type=int, default=int(os.environ.get("GINI_VISION_PULSE_MS", "180")))
+    parser.add_argument("--max-live-moves", type=int, default=int(os.environ.get("GINI_VISION_MAX_LIVE_MOVES", "8")))
+    parser.add_argument("--live-seconds", type=int, default=int(os.environ.get("GINI_VISION_LIVE_SECONDS", "60")))
     parser.add_argument("--live", action="store_true", help="Actually move Gini. Default is dry-run.")
     parser.add_argument("--preview", action="store_true", help="Show a local preview window.")
     args = parser.parse_args()
@@ -237,6 +239,8 @@ def main():
     print("Dead zone:", args.deadzone_x, args.deadzone_y)
     print("Stable frames:", args.stable_frames)
     print("PTZ pulse:", args.pulse_ms, "ms")
+    if args.live:
+        print("Live safety budget:", args.max_live_moves, "moves /", args.live_seconds, "seconds")
     print("Frames are not recorded.")
     print("")
 
@@ -257,9 +261,14 @@ def main():
     last_move_at = 0.0
     last_seen_at = 0.0
     last_status_at = 0.0
+    live_moves = 0
+    live_started_at = time.time()
 
     try:
         while True:
+            if args.live and args.live_seconds > 0 and time.time() - live_started_at >= args.live_seconds:
+                print("LIVE SAFETY: session time limit reached -> stopping tracker")
+                break
             raw = read_exact(ffmpeg.stdout, frame_bytes)
 
             if raw is None:
@@ -346,8 +355,20 @@ def main():
                 )
 
                 if bridge is not None:
+                    if args.max_live_moves > 0 and live_moves >= args.max_live_moves:
+                        print("LIVE SAFETY: movement budget reached -> stopping tracker")
+                        break
+
                     bridge.stdin.write(direction + "\n")
                     bridge.stdin.flush()
+                    live_moves += 1
+                    print(
+                        "LIVE MOVE {}/{}: {}".format(
+                            live_moves,
+                            args.max_live_moves if args.max_live_moves > 0 else "unlimited",
+                            direction.upper()
+                        )
+                    )
                 else:
                     print("DRY RUN: would move", direction.upper())
 
