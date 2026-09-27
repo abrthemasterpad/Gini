@@ -17,6 +17,7 @@ const PASS = process.env.GINI_CAMERA_PASSWORD || "";
 const STREAM = Number(process.env.GINI_CAMERA_STREAM || 0);
 
 const SPEECH_THRESHOLD_DB = Number(process.env.GINI_SPEECH_THRESHOLD_DB || -36);
+const STT_LANGUAGE = process.env.GINI_STT_LANGUAGE || "en";
 const STEP = Number(process.env.GINI_PTZ_STEP || 1);
 const NATIVE_PTZ_PARAM = 6;
 const NATIVE_PTZ_MOVE_MS = Math.max(
@@ -102,6 +103,7 @@ function normalizeText(text) {
     .toLowerCase()
     .replace(/[“”"]/g, "")
     .replace(/\bg\s*[-. ]\s*i\s*[-. ]\s*n\s*[-. ]\s*i\b/gi, "gini")
+    .replace(/जीनी|जिनी|ஜினி/g, "gini")
     .replace(/[.,!?;:]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -147,9 +149,10 @@ function extractWakeCommand(text) {
     return { wake: false, alias: "", command: normalized };
   }
 
-  // Ignore filler before the wake word and remove repeated wake words after it.
-  const afterWake = normalized.slice(best.index + best.length).trim();
-  const command = stripWakeAliases(afterWake);
+  // Keep useful command words on BOTH sides of the wake word.
+  // Example: "turn right, Gini" must still resolve to "turn right".
+  // Repeated wake words are removed before parsing.
+  const command = stripWakeAliases(normalized);
 
   return {
     wake: true,
@@ -160,52 +163,84 @@ function extractWakeCommand(text) {
 
 function parseCommand(command) {
   const clean = stripWakeAliases(normalizeText(command));
+  const candidates = [];
 
-  if (/\b(go to sleep|sleep|stop listening|stop)\b/.test(clean)) {
-    return { action: null, reply: "Okay. I am going to sleep.", sleep: true };
-  }
-
-  const directionPatterns = [
-    { action: "left",  reply: "Turning left.", pattern: /\b(?:turn|look|move)?\s*(?:to\s+the\s+)?left\b/ },
-    { action: "right", reply: "Turning right.", pattern: /\b(?:turn|look|move)?\s*(?:to\s+the\s+)?right\b/ },
-    { action: "up",    reply: "Looking up.", pattern: /\b(?:look|move|turn)?\s*up\b/ },
-    { action: "down",  reply: "Looking down.", pattern: /\b(?:look|move|turn)?\s*down\b/ }
-  ];
-
-  let earliest = null;
-
-  for (const item of directionPatterns) {
-    const match = item.pattern.exec(clean);
-
-    if (match && (!earliest || match.index < earliest.index)) {
-      earliest = { ...item, index: match.index };
+  function addCandidate(kind, regex, data) {
+    const match = regex.exec(clean);
+    if (match) {
+      candidates.push({
+        kind,
+        index: match.index,
+        ...data
+      });
     }
   }
 
-  if (earliest) {
+  addCandidate(
+    "left",
+    /\b(?:turn|look|move|go)?\s*(?:to\s+the\s+)?left\b/,
+    { action: "left", reply: "Turning left.", sleep: false }
+  );
+
+  addCandidate(
+    "right",
+    /\b(?:turn|look|move|go)?\s*(?:to\s+the\s+)?right\b/,
+    { action: "right", reply: "Turning right.", sleep: false }
+  );
+
+  addCandidate(
+    "up",
+    /\b(?:turn|look|move|go)?\s*up\b/,
+    { action: "up", reply: "Looking up.", sleep: false }
+  );
+
+  addCandidate(
+    "down",
+    /\b(?:turn|look|move|go)?\s*down\b/,
+    { action: "down", reply: "Looking down.", sleep: false }
+  );
+
+  addCandidate(
+    "hear",
+    /\b(?:can you hear me|do you hear me|hear me)\b/,
+    { action: null, reply: "Yes. I can hear you.", sleep: false }
+  );
+
+  addCandidate(
+    "there",
+    /\b(?:are you there|you there)\b/,
+    { action: null, reply: "Yes. I am here.", sleep: false }
+  );
+
+  addCandidate(
+    "hello",
+    /\b(?:say hello|hello|hi)\b/,
+    { action: null, reply: "Hello. I am Gini.", sleep: false }
+  );
+
+  addCandidate(
+    "sleep",
+    /\b(?:go to sleep|sleep|stop listening|stop)\b/,
+    { action: null, reply: "Okay. I am going to sleep.", sleep: true }
+  );
+
+  if (candidates.length === 0) {
     return {
-      action: earliest.action,
-      reply: earliest.reply,
-      sleep: false
+      known: false,
+      kind: "unknown",
+      action: null,
+      reply: "",
+      sleep: false,
+      clean
     };
   }
 
-  if (/\b(can you hear me|do you hear me|hear me)\b/.test(clean)) {
-    return { action: null, reply: "Yes. I can hear you.", sleep: false };
-  }
-
-  if (/\b(are you there|you there)\b/.test(clean)) {
-    return { action: null, reply: "Yes. I am here.", sleep: false };
-  }
-
-  if (/\b(say hello|hello|hi)\b/.test(clean)) {
-    return { action: null, reply: "Hello. I am Gini.", sleep: false };
-  }
+  candidates.sort((a, b) => a.index - b.index);
 
   return {
-    action: null,
-    reply: "I heard you, but I do not know that command yet.",
-    sleep: false
+    known: true,
+    clean,
+    ...candidates[0]
   };
 }
 
@@ -246,14 +281,14 @@ async function transcribeWindow(frames) {
   const wh = await run(WHISPER, [
     "-m", MODEL,
     "-f", WAV,
-    "-l", "auto",
+    "-l", STT_LANGUAGE,
     "-t", "4",
     "--no-gpu",
     "--no-timestamps",
     "--output-txt",
     "--output-file", TRANSCRIPT_BASE,
     "--prompt",
-    "The assistant wake word is Gini, spelled G-i-n-i. Common commands: Gini turn left, Gini turn right, Gini look up, Gini look down, Gini sleep.",
+    "The wake word is Gini, spelled G-i-n-i. Preserve short commands exactly. Common phrases: Gini turn left, Gini turn right, Gini look up, Gini look down, Gini can you hear me, Gini are you there, Gini sleep. The wake word may also sound like Genie, Jeanie, Ginie, Ginny or Jini.",
     "--no-prints"
   ]);
 
@@ -397,6 +432,11 @@ async function nativePtz(action) {
 async function performCommand(command) {
   const parsed = parseCommand(command);
 
+  if (!parsed.known) {
+    console.log("No actionable command -> keep listening.");
+    return;
+  }
+
   suppressAudio = true;
   audioFrames = [];
   firstBufferedAt = 0;
@@ -508,11 +548,17 @@ async function processBufferedAudio() {
       const followup = stripWakeAliases(normalizeText(result.text));
 
       if (followup) {
-        console.log("FOLLOW-UP COMMAND:", followup);
-        awaitingCommandUntil = 0;
-        await performCommand(followup);
-        processing = false;
-        return;
+        const parsedFollowup = parseCommand(followup);
+
+        if (parsedFollowup.known) {
+          console.log("FOLLOW-UP COMMAND:", followup);
+          awaitingCommandUntil = 0;
+          await performCommand(followup);
+          processing = false;
+          return;
+        }
+
+        console.log("Follow-up heard, but no usable command yet -> still listening");
       }
     }
 
@@ -540,6 +586,17 @@ async function processBufferedAudio() {
   if (!wake.command) {
     awaitingCommandUntil = Date.now() + 8000;
     console.log("Wake word heard - waiting up to 8 seconds for the command...");
+    processing = false;
+    return;
+  }
+
+  const parsedWakeCommand = parseCommand(wake.command);
+
+  if (!parsedWakeCommand.known) {
+    awaitingCommandUntil = Date.now() + 8000;
+    console.log(
+      "Wake word heard, but no usable command yet -> waiting up to 8 seconds..."
+    );
     processing = false;
     return;
   }
@@ -661,11 +718,13 @@ API.onrecvframeex = function (
 };
 
 console.log("==================================================");
-console.log("GINI CONTINUOUS BRAIN v0.3.3");
+console.log("GINI CONTINUOUS BRAIN v0.3.4");
 console.log("==================================================");
 console.log("Foreground native stream - no hidden background process");
 console.log("Wake word: Gini");
 console.log("VAD threshold:", SPEECH_THRESHOLD_DB, "dB");
+console.log("STT language:", STT_LANGUAGE);
+console.log("Command mode: wake anywhere + 8s armed follow-up");
 console.log("PTZ mode: native SDK (physical + mic-safe)");
 console.log("Speaker mode:", SPEAKER_MODE, SPEAKER_MODE === "camera" ? "(Gini camera speaker)" : "(Windows fallback)");
 console.log("");
