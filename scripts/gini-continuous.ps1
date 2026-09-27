@@ -96,7 +96,7 @@ function Start-NativeListener {
 
     while ((Get-Date) -lt $deadline) {
         if (Test-Path $Ready) {
-            Write-Host "Native microphone stream connected OK" -ForegroundColor Green
+            Write-Host "Native stream open OK - Gini is ready for speech" -ForegroundColor Green
             return $p
         }
 
@@ -112,7 +112,7 @@ function Start-NativeListener {
     }
 
     Stop-NativeListener $p
-    throw "Persistent listener did not receive microphone audio within 15 seconds."
+    throw "Persistent native stream did not open within 15 seconds."
 }
 
 function Invoke-GiniReply([string]$Reply) {
