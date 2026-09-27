@@ -65,7 +65,7 @@ let awaitingCommandUntil = 0;
 let reconnectingAfterTalkback = false;
 let closeStreamResolve = null;
 
-const wakeAliases = ["gini", "jeanie", "genie", "ginny", "jini", "jenny"];
+const wakeAliases = ["gini", "ginie", "jeanie", "genie", "ginny", "jini", "jenny"];
 
 function run(file, args, options = {}) {
   return new Promise((resolve) => {
@@ -101,12 +101,17 @@ function normalizeText(text) {
   return text
     .toLowerCase()
     .replace(/[“”"]/g, "")
+    .replace(/\bg\s*[-. ]\s*i\s*[-. ]\s*n\s*[-. ]\s*i\b/gi, "gini")
     .replace(/[.,!?;:]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function extractWakeCommand(text) {
+function stripWakeAliases(text) {
+  let out = " " + text + " ";
+
+  for (const alias of wakeAliases) {
+    const escaped = alias.replace(/[.*+?^$()|[\]\\]/g, "\\function extractWakeCommand(text) {
   const normalized = normalizeText(text);
 
   for (const alias of wakeAliases) {
@@ -123,38 +128,108 @@ function extractWakeCommand(text) {
   }
 
   return { wake: false, alias: "", command: normalized };
+}");
+    out = out.replace(
+      new RegExp("\\b" + escaped + "\\b", "gi"),
+      " "
+    );
+  }
+
+  return out.replace(/\s+/g, " ").trim();
+}
+
+function extractWakeCommand(text) {
+  const normalized = normalizeText(text);
+
+  let best = null;
+
+  for (const alias of wakeAliases) {
+    const escaped = alias.replace(/[.*+?^$()|[\]\\]/g, "\\function extractWakeCommand(text) {
+  const normalized = normalizeText(text);
+
+  for (const alias of wakeAliases) {
+    const escaped = alias.replace(/[.*+?^$()|[\]\\]/g, "\\$&");
+    const re = new RegExp("^" + escaped + "(?:\\s+|$)", "i");
+
+    if (re.test(normalized)) {
+      return {
+        wake: true,
+        alias,
+        command: normalized.replace(re, "").trim()
+      };
+    }
+  }
+
+  return { wake: false, alias: "", command: normalized };
+}");
+    const re = new RegExp("\\b" + escaped + "\\b", "i");
+    const match = re.exec(normalized);
+
+    if (match && (!best || match.index < best.index)) {
+      best = {
+        alias,
+        index: match.index,
+        length: match[0].length
+      };
+    }
+  }
+
+  if (!best) {
+    return { wake: false, alias: "", command: normalized };
+  }
+
+  // Ignore filler before the wake word and remove repeated wake words after it.
+  const afterWake = normalized.slice(best.index + best.length).trim();
+  const command = stripWakeAliases(afterWake);
+
+  return {
+    wake: true,
+    alias: best.alias,
+    command
+  };
 }
 
 function parseCommand(command) {
-  if (/^(go to sleep|sleep|stop listening|stop)$/.test(command)) {
+  const clean = stripWakeAliases(normalizeText(command));
+
+  if (/\b(go to sleep|sleep|stop listening|stop)\b/.test(clean)) {
     return { action: null, reply: "Okay. I am going to sleep.", sleep: true };
   }
 
-  if (/(turn|look|move)\s+(to\s+the\s+)?left|\bleft\b/.test(command)) {
-    return { action: "left", reply: "Turning left.", sleep: false };
+  const directionPatterns = [
+    { action: "left",  reply: "Turning left.", pattern: /\b(?:turn|look|move)?\s*(?:to\s+the\s+)?left\b/ },
+    { action: "right", reply: "Turning right.", pattern: /\b(?:turn|look|move)?\s*(?:to\s+the\s+)?right\b/ },
+    { action: "up",    reply: "Looking up.", pattern: /\b(?:look|move|turn)?\s*up\b/ },
+    { action: "down",  reply: "Looking down.", pattern: /\b(?:look|move|turn)?\s*down\b/ }
+  ];
+
+  let earliest = null;
+
+  for (const item of directionPatterns) {
+    const match = item.pattern.exec(clean);
+
+    if (match && (!earliest || match.index < earliest.index)) {
+      earliest = { ...item, index: match.index };
+    }
   }
 
-  if (/(turn|look|move)\s+(to\s+the\s+)?right|\bright\b/.test(command)) {
-    return { action: "right", reply: "Turning right.", sleep: false };
+  if (earliest) {
+    return {
+      action: earliest.action,
+      reply: earliest.reply,
+      sleep: false
+    };
   }
 
-  if (/(look|move|turn)\s+up|\bup\b/.test(command)) {
-    return { action: "up", reply: "Looking up.", sleep: false };
-  }
-
-  if (/(look|move|turn)\s+down|\bdown\b/.test(command)) {
-    return { action: "down", reply: "Looking down.", sleep: false };
-  }
-
-  if (/can you hear me|do you hear me|hear me/.test(command)) {
+  if (/\b(can you hear me|do you hear me|hear me)\b/.test(clean)) {
     return { action: null, reply: "Yes. I can hear you.", sleep: false };
   }
 
-  if (/are you there|you there/.test(command)) {
+  if (/\b(are you there|you there)\b/.test(clean)) {
     return { action: null, reply: "Yes. I am here.", sleep: false };
   }
 
-  if (/say hello|hello|hi/.test(command)) {
+  if (/\b(say hello|hello|hi)\b/.test(clean)) {
     return { action: null, reply: "Hello. I am Gini.", sleep: false };
   }
 
@@ -461,7 +536,7 @@ async function processBufferedAudio() {
 
   if (!wake.wake) {
     if (Date.now() < awaitingCommandUntil) {
-      const followup = normalizeText(result.text);
+      const followup = stripWakeAliases(normalizeText(result.text));
 
       if (followup) {
         console.log("FOLLOW-UP COMMAND:", followup);
@@ -494,8 +569,8 @@ async function processBufferedAudio() {
   console.log("WAKE WORD OK");
 
   if (!wake.command) {
-    awaitingCommandUntil = Date.now() + 5000;
-    console.log("Wake word heard - waiting up to 5 seconds for the command...");
+    awaitingCommandUntil = Date.now() + 8000;
+    console.log("Wake word heard - waiting up to 8 seconds for the command...");
     processing = false;
     return;
   }
@@ -617,7 +692,7 @@ API.onrecvframeex = function (
 };
 
 console.log("==================================================");
-console.log("GINI CONTINUOUS BRAIN v0.3.2");
+console.log("GINI CONTINUOUS BRAIN v0.3.3");
 console.log("==================================================");
 console.log("Foreground native stream - no hidden background process");
 console.log("Wake word: Gini");
