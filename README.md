@@ -2,9 +2,9 @@
 
 ![Gini project cover featuring the Trueview T18205-A pan-tilt camera and verified video, movement, and speech features](assets/gini-t18205-a-cover.webp)
 
-**Gini: local video, pan/tilt control, and generated camera-speaker speech on the Trueview T18205-A.**
+**Gini: a local-first mini physical AI presence built from a low-cost PTZ camera.**
 
-An open-source Trueview T18205-A robot-camera project exploring local ESee/Juan camera control, Bubble H.264 video, PTZ, and G711A talkback. Speech recognition, wake word, person tracking, and autonomous conversation are future work.
+Gini reuses the camera as eyes, microphone as ears, PTZ motors as a neck, built-in speaker as a mouth, and a PC as the brain. The core direction is a small room assistant that can notice people, turn toward them, converse, remember approved context, and use safe local skills.
 
 Gini is an open-source project that turns a low-cost Trueview / ESee-compatible PTZ Wi-Fi camera into a locally controlled AI robot head.
 
@@ -33,7 +33,7 @@ The first tested device is the **Trueview T18205-A**. The goal is to reuse the c
 | Continuous camera-speaker loop | ✅ Verified | Safe talkback hangup + fresh mic resume |
 | Secure local AI brain | 🧪 Experimental | Offline-first Ollama layer in v0.4 |
 | Local memory | 🧪 Experimental | Opt-in only; OFF by default |
-| Person tracking | 📋 Planned | Vision + native PTZ |
+| Face/presence tracking | 🧪 Experimental | Low-CPU v0.5 dry-run + native PTZ bridge |
 
 ## Key discovery
 
@@ -105,11 +105,11 @@ The wrapper synthesizes a temporary 16 kHz WAV, transmits 8 kHz G711A frames thr
 
 ## Current next milestone
 
-**Secure local AI assistant v0.4.**
+**Vision + physical presence v0.5.**
 
-The hardware loop is now verified. The next layer adds offline-first conversation, strict action allowlisting, privacy controls, optional local memory, and later vision/person tracking.
+The hardware loop is verified and the secure assistant layer is underway. The current core milestone is: detect a face locally, calculate where it is in frame, and gently recenter it with native PTZ without recording video.
 
-See [Gini AI Assistant v0.4](docs/assistant-v0.4.md).
+See [Core product direction](docs/core-product-direction.md), [Gini Vision v0.5](docs/vision-v0.5.md), and [Gini AI Assistant v0.4](docs/assistant-v0.4.md).
 
 ## Security
 
