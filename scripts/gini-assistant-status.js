@@ -1,5 +1,7 @@
 "use strict";
 
+require("./gini-env");
+
 const brain = require("./gini-assistant-brain");
 
 (async () => {
