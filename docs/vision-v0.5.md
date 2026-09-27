@@ -143,3 +143,53 @@ person moves right -> detected right -> RIGHT correction
 ```
 
 Use `--no-mirror-x` only on a camera/feed that is already non-mirrored.
+
+
+## Vision coordinates vs motor direction
+
+The tested camera has two independent direction conventions:
+
+1. The video feed is horizontally mirrored, so the frame is flipped before detection.
+2. The native PTZ motor's horizontal command direction is opposite to the corrected visual target direction for autonomous centering.
+
+These are intentionally handled separately.
+
+Default tested configuration:
+
+```text
+GINI_VISION_MIRROR_X=1
+GINI_VISION_PTZ_INVERT_X=1
+GINI_VISION_PTZ_INVERT_Y=0
+```
+
+Therefore:
+
+```text
+visual target RIGHT -> physical PTZ LEFT
+visual target LEFT  -> physical PTZ RIGHT
+```
+
+This inversion applies only to Vision tracking. It does not change the already verified manual/native PTZ command semantics elsewhere in Gini.
+
+## Closed-loop synchronization
+
+The tracker no longer sends repeated motor pulses based on stale video frames.
+
+For each live correction it now:
+
+1. requires stable face detection
+2. maps visual target direction to physical PTZ direction
+3. sends exactly one PTZ pulse
+4. waits for an explicit bridge acknowledgement
+5. discards/ignores frames during a short post-move settle window
+6. requires the face to be reacquired and stable again before another move
+
+If the face is lost after a move, Gini holds position and waits. It does not continue moving blindly.
+
+Safer first-live defaults:
+
+```text
+GINI_VISION_PULSE_MS=120
+GINI_VISION_POST_MOVE_SETTLE_MS=900
+GINI_VISION_COOLDOWN_MS=1200
+```
