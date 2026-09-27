@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $Root = "D:\Gini"
+$Checker = Join-Path $Root "scripts\gini-vision-env-check.py"
 
 Write-Host ""
 Write-Host "GINI VISION v0.5 DOCTOR" -ForegroundColor Cyan
@@ -32,16 +33,29 @@ Add-Check "Vision tracker" (Test-Path $tracker) $tracker
 $bridge = Join-Path $Root "scripts\gini-vision-ptz-bridge.js"
 Add-Check "Native PTZ bridge" (Test-Path $bridge) $bridge
 
-if ($python) {
-    & py.exe -3 -c "import cv2" 2>$null
-    Add-Check "OpenCV" ($LASTEXITCODE -eq 0) "opencv-python-headless"
+Add-Check "Vision checker" (Test-Path $Checker) $Checker
+
+if ($python -and (Test-Path $Checker)) {
+    $oldPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $cvOutput = & py.exe -3 $Checker 2>&1
+    $cvCode = $LASTEXITCODE
+    $ErrorActionPreference = $oldPreference
+
+    $cvText = ($cvOutput | Out-String).Trim()
+
+    Add-Check "OpenCV face API" ($cvCode -eq 0) $cvText
 }
 
-$checks | Format-Table -AutoSize
+$checks | Format-Table -AutoSize -Wrap
 
-if (($checks | Where-Object { $_.Status -eq "FAIL" }).Count -gt 0) {
+$failed = @($checks | Where-Object { $_.Status -eq "FAIL" })
+
+if ($failed.Count -gt 0) {
     Write-Host ""
-    Write-Host "Vision prerequisites are incomplete." -ForegroundColor Yellow
+    Write-Host "Vision prerequisites need repair." -ForegroundColor Yellow
+    Write-Host "Run:" -ForegroundColor Cyan
+    Write-Host "  powershell -ExecutionPolicy Bypass -File .\scripts\gini-vision-setup.ps1"
     exit 2
 }
 
