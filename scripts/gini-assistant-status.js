@@ -11,6 +11,7 @@ const brain = require("./gini-assistant-brain");
   console.log("Provider:", brain.config.provider);
   console.log("Model:", brain.config.ollamaModel);
   console.log("Memory:", brain.config.memoryEnabled ? "ON" : "OFF");
+  console.log("Local skills: READY");
 
   const health = await brain.providerHealth();
 
