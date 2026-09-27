@@ -13,9 +13,6 @@ if (!(Test-Path $Direct)) {
     throw "Missing direct continuous brain: $Direct"
 }
 
-if (!(Test-Connection 172.14.10.1 -Count 1 -Quiet)) {
-    throw "Gini camera is not reachable. Connect this PC to Gini camera Wi-Fi."
-}
 
 $env:GINI_SPEECH_THRESHOLD_DB = $SpeechThresholdDb.ToString(
     [System.Globalization.CultureInfo]::InvariantCulture
