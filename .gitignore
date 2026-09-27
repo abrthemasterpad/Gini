@@ -13,11 +13,17 @@ yarn-error.log*
 *.pcm
 *.g711
 *.g711a
+*.aac
+*.raw
 *.mp4
 *.h264
 captures/
 recordings/
 logs/
+runtime/
+
+# Local speech models
+models/*.bin
 
 # Local third-party research copies
 esee-sdk/
