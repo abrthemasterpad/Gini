@@ -57,6 +57,7 @@ let lastHandledText = "";
 let lastHandledAt = 0;
 let awaitingCommandUntil = 0;
 let reconnectingAfterTalkback = false;
+let closeStreamResolve = null;
 
 const wakeAliases = ["gini", "jeanie", "genie", "ginny", "jini", "jenny"];
 
@@ -231,23 +232,28 @@ function connectCamera() {
   );
 }
 
-async function restartListeningConnection() {
-  reconnectingAfterTalkback = true;
+async function pauseListeningBeforeTalkback() {
   suppressAudio = true;
   audioFrames = [];
   firstBufferedAt = 0;
 
-  const audioBefore = totalAudioFrames;
+  if (connection && opened) {
+    console.log("Pausing microphone stream BEFORE talkback...");
 
-  console.log("Refreshing microphone connection after talkback...");
+    const closeAck = new Promise(resolve => {
+      closeStreamResolve = resolve;
+    });
 
-  try {
-    if (connection && opened) {
+    try {
       API.close_stream(connection, 0, STREAM);
-    }
-  } catch {}
+      await Promise.race([
+        closeAck,
+        sleep(1500)
+      ]);
+    } catch {}
 
-  await sleep(300);
+    closeStreamResolve = null;
+  }
 
   try {
     Player.DisConnectDevice("", IP);
@@ -256,11 +262,31 @@ async function restartListeningConnection() {
   connection = null;
   opened = false;
 
-  await sleep(900);
+  // Let firmware fully release the live audio path before another
+  // connection enters VOP2P/talkback mode.
+  await sleep(800);
+
+  console.log("Listening stream fully closed - talkback may start.");
+}
+
+async function restartListeningConnection() {
+  reconnectingAfterTalkback = true;
+  suppressAudio = true;
+  audioFrames = [];
+  firstBufferedAt = 0;
+
+  const audioBefore = totalAudioFrames;
+
+  console.log("Opening a fresh microphone stream after talkback...");
+
+  connection = null;
+  opened = false;
+
+  await sleep(700);
 
   connectCamera();
 
-  const deadline = Date.now() + 10000;
+  const deadline = Date.now() + 12000;
 
   while (Date.now() < deadline) {
     if (opened && totalAudioFrames > audioBefore) {
@@ -278,7 +304,7 @@ async function restartListeningConnection() {
 
   reconnectingAfterTalkback = false;
 
-  console.error("Microphone did not resume after talkback reconnect.");
+  console.error("Microphone did not resume on the fresh post-talkback stream.");
   return false;
 }
 
@@ -306,6 +332,11 @@ async function performCommand(command) {
       { inherit: true }
     );
   }
+
+  // This camera is effectively half-duplex at the firmware level:
+  // an already-open live audio stream can be permanently silenced if
+  // talkback starts while that stream is active. Close listening first.
+  await pauseListeningBeforeTalkback();
 
   const sayResult = await run(
     POWERSHELL,
@@ -466,6 +497,17 @@ API.onopenstream = function (conn, channel, streamid, result) {
   console.log("");
 };
 
+API.onclosestream = function (conn, channel, streamid, result) {
+  console.log("CLOSE STREAM:", result, "channel=" + channel, "stream=" + streamid);
+  opened = false;
+
+  if (closeStreamResolve) {
+    const resolve = closeStreamResolve;
+    closeStreamResolve = null;
+    resolve(result);
+  }
+};
+
 API.onrecvframeex = function (
   conn,
   frametype,
@@ -504,7 +546,7 @@ API.onrecvframeex = function (
 };
 
 console.log("==================================================");
-console.log("GINI CONTINUOUS BRAIN v0.2.4");
+console.log("GINI CONTINUOUS BRAIN v0.2.5");
 console.log("==================================================");
 console.log("Foreground native stream - no hidden background process");
 console.log("Wake word: Gini");
