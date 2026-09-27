@@ -25,7 +25,10 @@ const POWERSHELL = "powershell.exe";
 const WHISPER = path.join(ROOT, "tools", "whisper", "Release", "whisper-cli.exe");
 const MODEL = path.join(ROOT, "models", "ggml-base-q5_1.bin");
 const PTZ = path.join(ROOT, "gini.ps1");
-const SAY = path.join(ROOT, "gini-say.ps1");
+const SAY_CAMERA = path.join(ROOT, "gini-say.ps1");
+const SAY_LOCAL = path.join(ROOT, "scripts", "gini-say-local.ps1");
+const SPEAKER_MODE = (process.env.GINI_SPEAKER_MODE || "local").toLowerCase();
+const SAY = SPEAKER_MODE === "camera" ? SAY_CAMERA : SAY_LOCAL;
 
 const AAC = path.join(RUNTIME, "gini-direct-window.aac");
 const WAV = path.join(RUNTIME, "gini-direct-window.wav");
@@ -333,11 +336,44 @@ async function performCommand(command) {
     );
   }
 
-  // This camera is effectively half-duplex at the firmware level:
-  // an already-open live audio stream can be permanently silenced if
-  // talkback starts while that stream is active. Close listening first.
-  await pauseListeningBeforeTalkback();
+  if (SPEAKER_MODE === "camera") {
+    // Stock T18205-A firmware can freeze native mic audio after VOP2P
+    // talkback. Camera-speaker mode is kept only as an experimental path.
+    await pauseListeningBeforeTalkback();
 
+    const sayResult = await run(
+      POWERSHELL,
+      [
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", SAY,
+        parsed.reply
+      ],
+      { inherit: true }
+    );
+
+    if (sayResult.code !== 0) {
+      console.error("Camera talkback did not close cleanly. Exit code:", sayResult.code);
+      shutdown("talkback teardown failed");
+      return;
+    }
+
+    if (parsed.sleep) {
+      shutdown("voice sleep command");
+      return;
+    }
+
+    const resumed = await restartListeningConnection();
+
+    if (!resumed) {
+      shutdown("microphone failed to resume after camera talkback");
+    }
+
+    return;
+  }
+
+  // Stable mode: keep the native camera mic stream open and speak through
+  // the Windows default audio device. No VOP2P call touches camera firmware.
   const sayResult = await run(
     POWERSHELL,
     [
@@ -350,8 +386,8 @@ async function performCommand(command) {
   );
 
   if (sayResult.code !== 0) {
-    console.error("Talkback did not close cleanly. Exit code:", sayResult.code);
-    shutdown("talkback teardown failed");
+    console.error("Local speech failed. Exit code:", sayResult.code);
+    processing = false;
     return;
   }
 
@@ -360,11 +396,11 @@ async function performCommand(command) {
     return;
   }
 
-  const resumed = await restartListeningConnection();
-
-  if (!resumed) {
-    shutdown("microphone failed to resume after talkback");
-  }
+  audioFrames = [];
+  firstBufferedAt = 0;
+  await sleep(600);
+  suppressAudio = false;
+  console.log("Listening continues - camera mic never closed.");
 }
 
 async function processBufferedAudio() {
@@ -546,11 +582,12 @@ API.onrecvframeex = function (
 };
 
 console.log("==================================================");
-console.log("GINI CONTINUOUS BRAIN v0.2.5");
+console.log("GINI CONTINUOUS BRAIN v0.3.0");
 console.log("==================================================");
 console.log("Foreground native stream - no hidden background process");
 console.log("Wake word: Gini");
 console.log("VAD threshold:", SPEECH_THRESHOLD_DB, "dB");
+console.log("Speaker mode:", SPEAKER_MODE, SPEAKER_MODE === "local" ? "(stable)" : "(experimental camera talkback)");
 console.log("");
 
 connectCamera();
