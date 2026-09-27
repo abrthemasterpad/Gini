@@ -134,7 +134,9 @@ API.onopenstream = function (conn, channel, streamid, result) {
   }
 
   opened = true;
+  fs.writeFileSync(READY, "stream-open");
   writeStatus({ openedAt: new Date().toISOString() });
+  console.log("GINI STREAM READY - waiting for sound");
 };
 
 API.onrecvframeex = function (
@@ -160,11 +162,10 @@ API.onrecvframeex = function (
         channels: param4
       };
 
-      fs.writeFileSync(READY, "ready");
       writeStatus({ firstAudioAt: new Date().toISOString() });
 
       console.log("FIRST AUDIO FRAME:", audioInfo, "bytes=" + datalen);
-      console.log("GINI LISTENER READY");
+      console.log("GINI AUDIO ACTIVE");
     }
 
     audioFrames.push(Buffer.from(data));
@@ -202,10 +203,6 @@ stopTimer = setInterval(() => {
     shutdown("stop flag");
   }
 }, 250);
-
-setTimeout(() => {
-  if (!audioInfo) shutdown("no audio received within 12 seconds", 2);
-}, 12000);
 
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
