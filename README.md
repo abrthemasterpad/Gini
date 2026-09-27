@@ -26,12 +26,14 @@ The first tested device is the **Trueview T18205-A**. The goal is to reuse the c
 | Native login | ✅ Verified | Protocol login returns success |
 | Built-in alarm sound | ✅ Verified | `R/SoundManCtrl` works |
 | Arbitrary speech through built-in speaker | ✅ Verified | G711A talkback works |
-| Camera microphone | 🧪 Partial | Audio track detected; clean capture pipeline is next |
-| Speech-to-text | 📋 Planned | Local/free first |
-| Wake word | 📋 Planned | "Gini" |
-| Person tracking | 📋 Planned | Vision + PTZ |
-| Conversation engine | 📋 Planned | STT → brain → TTS |
-| Memory | 📋 Planned | Later phase |
+| Camera microphone | ✅ Verified | Native AAC1 8 kHz mono capture works |
+| Speech-to-text | ✅ Verified | Local whisper.cpp pipeline works |
+| Wake word | ✅ Verified | "Gini" + common STT variants |
+| Native PTZ + live mic | ✅ Verified | Physical movement via native SDK while AAC remains alive |
+| Continuous camera-speaker loop | ✅ Verified | Safe talkback hangup + fresh mic resume |
+| Secure local AI brain | 🧪 Experimental | Offline-first Ollama layer in v0.4 |
+| Local memory | 🧪 Experimental | Opt-in only; OFF by default |
+| Person tracking | 📋 Planned | Vision + native PTZ |
 
 ## Key discovery
 
@@ -103,21 +105,11 @@ The wrapper synthesizes a temporary 16 kHz WAV, transmits 8 kHz G711A frames thr
 
 ## Current next milestone
 
-**Capture the camera microphone cleanly on the PC.**
+**Secure local AI assistant v0.4.**
 
-Target:
+The hardware loop is now verified. The next layer adds offline-first conversation, strict action allowlisting, privacy controls, optional local memory, and later vision/person tracking.
 
-```text
-camera mic
-   ↓
-local stream
-   ↓
-decoded PCM
-   ↓
-record / listen
-   ↓
-speech-to-text
-```
+See [Gini AI Assistant v0.4](docs/assistant-v0.4.md).
 
 ## Security
 
