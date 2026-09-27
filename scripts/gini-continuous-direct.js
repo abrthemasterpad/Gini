@@ -55,6 +55,8 @@ let firstBufferedAt = 0;
 let lastProcessAt = 0;
 let lastHandledText = "";
 let lastHandledAt = 0;
+let awaitingCommandUntil = 0;
+let reconnectingAfterTalkback = false;
 
 const wakeAliases = ["gini", "jeanie", "genie", "ginny", "jini", "jenny"];
 
@@ -82,6 +84,10 @@ function run(file, args, options = {}) {
       resolve({ code: code ?? -1, stdout, stderr });
     });
   });
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function normalizeText(text) {
@@ -209,12 +215,80 @@ async function transcribeWindow(frames) {
   return { quiet: false, maxDb, text };
 }
 
+function connectCamera() {
+  Player.ConnectDevice(
+    "",
+    IP,
+    USER,
+    PASS,
+    0,
+    PORT,
+    0,
+    0,
+    STREAM,
+    "",
+    null
+  );
+}
+
+async function restartListeningConnection() {
+  reconnectingAfterTalkback = true;
+  suppressAudio = true;
+  audioFrames = [];
+  firstBufferedAt = 0;
+
+  const audioBefore = totalAudioFrames;
+
+  console.log("Refreshing microphone connection after talkback...");
+
+  try {
+    if (connection && opened) {
+      API.close_stream(connection, 0, STREAM);
+    }
+  } catch {}
+
+  await sleep(300);
+
+  try {
+    Player.DisConnectDevice("", IP);
+  } catch {}
+
+  connection = null;
+  opened = false;
+
+  await sleep(900);
+
+  connectCamera();
+
+  const deadline = Date.now() + 10000;
+
+  while (Date.now() < deadline) {
+    if (opened && totalAudioFrames > audioBefore) {
+      reconnectingAfterTalkback = false;
+      suppressAudio = false;
+      audioFrames = [];
+      firstBufferedAt = 0;
+
+      console.log("MICROPHONE RESUMED - listening again.");
+      return true;
+    }
+
+    await sleep(200);
+  }
+
+  reconnectingAfterTalkback = false;
+
+  console.error("Microphone did not resume after talkback reconnect.");
+  return false;
+}
+
 async function performCommand(command) {
   const parsed = parseCommand(command);
 
   suppressAudio = true;
   audioFrames = [];
   firstBufferedAt = 0;
+  awaitingCommandUntil = 0;
 
   if (parsed.action) {
     console.log("ACTION:", parsed.action);
@@ -233,9 +307,7 @@ async function performCommand(command) {
     );
   }
 
-  console.log("GINI:", parsed.reply);
-
-  await run(
+  const sayResult = await run(
     POWERSHELL,
     [
       "-NoProfile",
@@ -246,17 +318,22 @@ async function performCommand(command) {
     { inherit: true }
   );
 
+  if (sayResult.code !== 0) {
+    console.error("Talkback did not close cleanly. Exit code:", sayResult.code);
+    shutdown("talkback teardown failed");
+    return;
+  }
+
   if (parsed.sleep) {
     shutdown("voice sleep command");
     return;
   }
 
-  setTimeout(() => {
-    audioFrames = [];
-    firstBufferedAt = 0;
-    suppressAudio = false;
-    console.log("Listening again...");
-  }, 1200);
+  const resumed = await restartListeningConnection();
+
+  if (!resumed) {
+    shutdown("microphone failed to resume after talkback");
+  }
 }
 
 async function processBufferedAudio() {
@@ -278,9 +355,21 @@ async function processBufferedAudio() {
 
   console.log("HEARD:", result.text);
 
-  const wake = extractWakeCommand(result.text);
+  let wake = extractWakeCommand(result.text);
 
   if (!wake.wake) {
+    if (Date.now() < awaitingCommandUntil) {
+      const followup = normalizeText(result.text);
+
+      if (followup) {
+        console.log("FOLLOW-UP COMMAND:", followup);
+        awaitingCommandUntil = 0;
+        await performCommand(followup);
+        processing = false;
+        return;
+      }
+    }
+
     console.log("No Gini wake word -> ignored");
     processing = false;
     return;
@@ -303,7 +392,8 @@ async function processBufferedAudio() {
   console.log("WAKE WORD OK");
 
   if (!wake.command) {
-    await performCommand("hello");
+    awaitingCommandUntil = Date.now() + 5000;
+    console.log("Wake word heard - waiting up to 5 seconds for the command...");
     processing = false;
     return;
   }
@@ -414,26 +504,14 @@ API.onrecvframeex = function (
 };
 
 console.log("==================================================");
-console.log("GINI CONTINUOUS BRAIN v0.2.3");
+console.log("GINI CONTINUOUS BRAIN v0.2.4");
 console.log("==================================================");
 console.log("Foreground native stream - no hidden background process");
 console.log("Wake word: Gini");
 console.log("VAD threshold:", SPEECH_THRESHOLD_DB, "dB");
 console.log("");
 
-Player.ConnectDevice(
-  "",
-  IP,
-  USER,
-  PASS,
-  0,
-  PORT,
-  0,
-  0,
-  STREAM,
-  "",
-  null
-);
+connectCamera();
 
 setInterval(() => {
   if (stopping || processing || suppressAudio) return;
