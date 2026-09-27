@@ -60,7 +60,7 @@ $text = (Get-Content $Transcript -Raw).Trim()
 Write-Host ""
 if ([string]::IsNullOrWhiteSpace($text)) {
     Write-Host "GINI HEARD AUDIO, BUT NO SPEECH WAS RECOGNIZED." -ForegroundColor Yellow
-    exit 2
+    return
 }
 
 Write-Host "YOU SAID:" -ForegroundColor Cyan
