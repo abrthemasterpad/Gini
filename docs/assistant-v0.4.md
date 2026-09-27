@@ -47,10 +47,10 @@ Default:
 ```text
 provider: Ollama
 endpoint: http://127.0.0.1:11434
-model: qwen3:4b
+model: qwen3:0.6b
 ```
 
-This is intentionally local-first because the PC is normally connected directly to the camera Wi-Fi and may have no internet route.
+This is intentionally local-first because the PC is normally connected directly to the camera Wi-Fi and may have no internet route. The 0.6B model is used as Gini's lightweight conversational/router brain; deterministic camera skills, STT, PTZ and safety remain outside the LLM.
 
 If the local model is unavailable, Gini falls back safely: verified local camera commands continue to work and general AI conversation reports that its AI brain is unavailable.
 
