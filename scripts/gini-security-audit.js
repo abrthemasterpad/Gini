@@ -76,6 +76,7 @@ flag(
 );
 
 const gitignore = path.join(ROOT, ".gitignore");
+const gitDir = path.join(ROOT, ".git");
 
 if (fs.existsSync(gitignore)) {
   const text = fs.readFileSync(gitignore, "utf8");
@@ -84,8 +85,10 @@ if (fs.existsSync(gitignore)) {
 
   flag(envIgnored ? "OK" : "WARNING", ".env protection", envIgnored ? "ignored by Git" : "not found in .gitignore");
   flag(runtimeIgnored ? "OK" : "WARNING", "Runtime privacy", runtimeIgnored ? "runtime/ ignored by Git" : "runtime/ not ignored");
+} else if (!fs.existsSync(gitDir)) {
+  flag("OK", "Working directory", "not a Git repository; local .env/runtime cannot be committed from here");
 } else {
-  flag("REVIEW", ".gitignore", "not present in this working copy");
+  flag("WARNING", ".gitignore", "Git repository detected but .gitignore is missing");
 }
 
 console.log("");
