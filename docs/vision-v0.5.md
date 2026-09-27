@@ -121,3 +121,25 @@ v0.5 does not save frames or recordings.
 Preview is optional and local.
 
 Later recognition features must remain opt-in.
+
+
+## Mirrored camera correction
+
+The tested Gini video feed is horizontally mirrored.
+
+Vision v0.5 therefore enables horizontal mirror correction by default:
+
+```text
+GINI_VISION_MIRROR_X=1
+```
+
+The frame is flipped **before** face detection and target-center calculation. This is important: flipping only the preview would make the display look correct while still sending reversed LEFT/RIGHT tracking commands.
+
+With the correction enabled:
+
+```text
+person moves left  -> detected left  -> LEFT correction
+person moves right -> detected right -> RIGHT correction
+```
+
+Use `--no-mirror-x` only on a camera/feed that is already non-mirrored.
