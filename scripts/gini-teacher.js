@@ -17,8 +17,8 @@ function usage() {
   console.log("");
   console.log("Commands:");
   console.log("  node .\\scripts\\gini-teacher.js status");
-  console.log("  node .\\scripts\\gini-teacher.js demo hi");
-  console.log("  node .\\scripts\\gini-teacher.js demo ja");
+  console.log("  node .\\scripts\\gini-teacher.js demo hi       # one-word hardware test");
+  console.log("  node .\\scripts\\gini-teacher.js demo ja       # one-word hardware test");
   console.log("  node .\\scripts\\gini-teacher.js lesson hi");
   console.log("  node .\\scripts\\gini-teacher.js lesson ja");
   console.log("");
@@ -95,6 +95,24 @@ async function status() {
   console.log("Rebuildo voice server: READY");
   console.log("Tamil Voice Artist:", health.tamilVoiceArtist || "unknown");
   console.log("Kokoro Voice Artist:", health.voiceArtist || "unknown");
+
+  try {
+    const catalog = await Voice.catalog();
+    const languages = catalog.languages || {};
+
+    for (const code of ["ta", "hi", "ja"]) {
+      const item = languages[code];
+      console.log(
+        "  " + code + " " +
+        (item ? item.label : "unknown") +
+        ": " +
+        (item && item.ready ? "READY" : "NOT READY")
+      );
+    }
+  } catch (error) {
+    console.log("Language readiness check failed:", error.message);
+  }
+
   console.log("");
   console.log("Teacher lessons:");
 
@@ -105,7 +123,7 @@ async function status() {
   console.log("  ar  Arabic  planned - local voice not selected yet");
 }
 
-async function runLesson(languageId, interactive) {
+async function runLesson(languageId, interactive, maxItems = null) {
   const lesson = Lessons.getLesson(languageId);
 
   if (!lesson) {
@@ -139,12 +157,16 @@ async function runLesson(languageId, interactive) {
 
   await speakTamil(lesson.introTamil);
 
-  for (let index = 0; index < lesson.items.length; index++) {
-    const item = lesson.items[index];
+  const items = maxItems == null
+    ? lesson.items
+    : lesson.items.slice(0, Math.max(1, maxItems));
+
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index];
 
     console.log("");
     console.log(
-      "[" + (index + 1) + "/" + lesson.items.length + "] " +
+      "[" + (index + 1) + "/" + items.length + "] " +
       item.meaningTamil + " -> " + item.target + " / " + item.roman
     );
 
@@ -175,6 +197,7 @@ async function runLesson(languageId, interactive) {
 async function main() {
   const command = String(process.argv[2] || "status").toLowerCase();
   const language = String(process.argv[3] || "hi").toLowerCase();
+  const requestedCount = Number(process.argv[4] || 1);
 
   if (command === "status") {
     await status();
@@ -182,12 +205,16 @@ async function main() {
   }
 
   if (command === "demo") {
-    await runLesson(language, false);
+    await runLesson(
+      language,
+      false,
+      Number.isFinite(requestedCount) ? requestedCount : 1
+    );
     return;
   }
 
   if (command === "lesson") {
-    await runLesson(language, true);
+    await runLesson(language, true, null);
     return;
   }
 
