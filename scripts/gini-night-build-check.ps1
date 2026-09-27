@@ -48,6 +48,16 @@ Write-Host "Running read-only security audit..." -ForegroundColor Cyan
 & node.exe (Join-Path $Scripts "gini-security-audit.js")
 
 Write-Host ""
+$envFile = Join-Path $Root ".env"
+if (Test-Path $envFile) {
+    $envText = Get-Content $envFile -Raw
+    if ($envText -match "(?m)^GINI_OLLAMA_MODEL=qwen3:4b\s*$") {
+        Write-Host "STALE CONFIG: .env still points to qwen3:4b." -ForegroundColor Yellow
+        Write-Host "Run .\scripts\gini-migrate-lightweight-config.ps1 to switch to qwen3:0.6b." -ForegroundColor Yellow
+        Write-Host ""
+    }
+}
+
 Write-Host "Checking local AI provider..." -ForegroundColor Cyan
 & node.exe (Join-Path $Scripts "gini-assistant-status.js")
 $providerCode = $LASTEXITCODE
