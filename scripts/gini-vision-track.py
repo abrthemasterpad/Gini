@@ -140,18 +140,37 @@ class BridgeReader:
     def __init__(self, process):
         self.process = process
         self.lines = queue.Queue()
-        self.thread = threading.Thread(target=self._pump, daemon=True)
+        self.stop_requested = False
+        self.thread = threading.Thread(target=self._pump, daemon=False)
         self.thread.start()
 
     def _pump(self):
         try:
             for line in self.process.stdout:
+                if self.stop_requested:
+                    break
+
                 text = line.strip()
                 if text:
                     print("[PTZ]", text)
                     self.lines.put(text)
+        except Exception as exc:
+            if not self.stop_requested:
+                self.lines.put("GINI_READER_ERROR " + repr(exc))
         finally:
             self.lines.put("__EOF__")
+
+    def close(self):
+        self.stop_requested = True
+
+        try:
+            if self.process.stdout:
+                self.process.stdout.close()
+        except Exception:
+            pass
+
+        if self.thread.is_alive():
+            self.thread.join(timeout=1.5)
 
     def wait_for(self, predicate, timeout):
         deadline = time.time() + timeout
@@ -215,6 +234,8 @@ def start_ptz_bridge(pulse_ms):
         stdout=subprocess.PIPE,
         stderr=None,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         bufsize=1,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
     )
@@ -222,7 +243,7 @@ def start_ptz_bridge(pulse_ms):
 
 def wait_for_bridge_ready(reader, timeout=10.0):
     text = reader.wait_for(
-        lambda line: line == "GINI_PTZ_READY",
+        lambda line: line.startswith("GINI_PTZ_READY"),
         timeout
     )
     return text is not None
@@ -632,9 +653,16 @@ def main():
                 pass
 
             try:
-                bridge.terminate()
+                bridge.wait(timeout=2.0)
             except Exception:
-                pass
+                try:
+                    bridge.terminate()
+                    bridge.wait(timeout=1.0)
+                except Exception:
+                    pass
+
+        if bridge_reader is not None:
+            bridge_reader.close()
 
         try:
             ffmpeg.terminate()
