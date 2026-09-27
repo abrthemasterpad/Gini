@@ -11,7 +11,7 @@ const memory = require("./gini-assistant-memory");
 
 const PROVIDER = (process.env.GINI_AI_PROVIDER || "ollama").toLowerCase();
 const OLLAMA_URL = process.env.GINI_OLLAMA_URL || "http://127.0.0.1:11434";
-const OLLAMA_MODEL = process.env.GINI_OLLAMA_MODEL || "qwen3:4b";
+const OLLAMA_MODEL = process.env.GINI_OLLAMA_MODEL || "qwen3:0.6b";
 const AI_TIMEOUT_MS = Math.max(
   5_000,
   Number(process.env.GINI_AI_TIMEOUT_MS || 35_000)
