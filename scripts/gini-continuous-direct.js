@@ -107,28 +107,15 @@ function normalizeText(text) {
     .trim();
 }
 
+function escapeRegex(text) {
+  return text.replace(/[.*+?^$()|[\]\\]/g, "\\$&");
+}
+
 function stripWakeAliases(text) {
   let out = " " + text + " ";
 
   for (const alias of wakeAliases) {
-    const escaped = alias.replace(/[.*+?^$()|[\]\\]/g, "\\function extractWakeCommand(text) {
-  const normalized = normalizeText(text);
-
-  for (const alias of wakeAliases) {
-    const escaped = alias.replace(/[.*+?^$()|[\]\\]/g, "\\$&");
-    const re = new RegExp("^" + escaped + "(?:\\s+|$)", "i");
-
-    if (re.test(normalized)) {
-      return {
-        wake: true,
-        alias,
-        command: normalized.replace(re, "").trim()
-      };
-    }
-  }
-
-  return { wake: false, alias: "", command: normalized };
-}");
+    const escaped = escapeRegex(alias);
     out = out.replace(
       new RegExp("\\b" + escaped + "\\b", "gi"),
       " "
@@ -140,28 +127,10 @@ function stripWakeAliases(text) {
 
 function extractWakeCommand(text) {
   const normalized = normalizeText(text);
-
   let best = null;
 
   for (const alias of wakeAliases) {
-    const escaped = alias.replace(/[.*+?^$()|[\]\\]/g, "\\function extractWakeCommand(text) {
-  const normalized = normalizeText(text);
-
-  for (const alias of wakeAliases) {
-    const escaped = alias.replace(/[.*+?^$()|[\]\\]/g, "\\$&");
-    const re = new RegExp("^" + escaped + "(?:\\s+|$)", "i");
-
-    if (re.test(normalized)) {
-      return {
-        wake: true,
-        alias,
-        command: normalized.replace(re, "").trim()
-      };
-    }
-  }
-
-  return { wake: false, alias: "", command: normalized };
-}");
+    const escaped = escapeRegex(alias);
     const re = new RegExp("\\b" + escaped + "\\b", "i");
     const match = re.exec(normalized);
 
