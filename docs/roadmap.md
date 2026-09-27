@@ -8,88 +8,161 @@ The rule for this project is simple:
 
 We do not mark a feature complete because an API exists. It must work on the physical device.
 
-## Phase 0 — Reverse engineering
+The product north star is documented in [core-product-direction.md](core-product-direction.md).
+
+## Phase 0 — Reverse engineering ✅
 
 - ✅ Discover local camera IP
 - ✅ Discover Bubble media stream
 - ✅ Verify H.264 video
-- ✅ Detect camera audio track
-- ✅ Discover PTZ CGI
-- ✅ Control left/right/up/down
-- ✅ Discover NetSDK capabilities
-- ✅ Identify native WebSocket transport on port 10000
+- ✅ Discover native WebSocket transport on port 10000
 - ✅ Fix SDK WS/WSS transport issue
-- ✅ Native protocol login
-- ✅ Trigger built-in alarm sound
+- ✅ Native login
+- ✅ Discover PTZ CGI
+- ✅ Verify CGI physical PTZ
 - ✅ Open VOP2P talkback
 - ✅ Send arbitrary G711A audio
 - ✅ Speak generated TTS through camera speaker
+- ✅ Verify native AAC1 microphone
+- ✅ Prove CGI PTZ freezes native AAC
+- ✅ Find native SDK PTZ path
+- ✅ Verify native physical PTZ with param 6 / stop 0
+- ✅ Verify native PTZ preserves AAC
 
-## Phase 1 — Gini Core
+## Phase 1 — Physical Gini core ✅
 
-- 🧪 Import and sanitize speech scripts; repository version awaits hardware retest
-- 🧪 Speech configuration via environment variables
-- 📋 One CLI entry point
-- 📋 Commands: say, left, right, up, down, status
-- 📋 `gini doctor` health checks
-- 📋 Remove hard-coded credentials
-- 📋 Add repeatable installation instructions
-
-## Phase 2 — Ears
-
-**Immediate next milestone.**
-
-- 🧪 Camera audio track already detected
-- 📋 Extract continuously
-- 📋 Decode to PCM
-- 📋 Verify live listening
-- 📋 Record a short WAV and compare quality
-- 📋 Add noise gate / level normalization if needed
-
-Success condition:
-
-```text
-Speak near Gini → clean recording on PC
-```
-
-## Phase 3 — Speech recognition
-
-- 📋 Local/free STT first
-- 📋 Voice activity detection
-- 📋 Transcript output
-- 📋 Command recognition
+- ✅ Camera = eyes
+- ✅ Microphone = ears
+- ✅ Native PTZ = neck
+- ✅ Built-in speaker = mouth
+- ✅ PC = brain
+- ✅ Continuous camera mic
+- ✅ Local whisper.cpp STT
+- ✅ Wake word "Gini"
+- ✅ Native PTZ command routing
+- ✅ Safe camera talkback hangup
+- ✅ Fresh microphone resume after talkback
+- ✅ Repeated physical command loop
+- ✅ Frozen rollback snapshot: `gini-core-v0.3.4-verified.js`
 
 Success condition:
 
 ```text
-"Gini, look left" → correct transcript
+hear → understand → move → speak → hear again
 ```
 
-## Phase 4 — Wake word and conversation loop
+Status: ✅ VERIFIED ON HARDWARE
 
-- 📋 Wake on "Gini"
-- 📋 Listen until silence
-- 📋 STT
-- 📋 Reason / route command
-- 📋 TTS
-- 📋 Play reply through camera speaker
+## Phase 2 — Secure Mini-Jarvis assistant 🧪
 
-## Phase 5 — Vision and tracking
+- 🧪 Offline-first small local AI brain
+- 🧪 Deterministic local skills before LLM
+- ✅ Model action allowlist
+- ✅ Secret redaction
+- ✅ Physical action rate limiting
+- ✅ Privacy mode for transient STT files
+- 🧪 Opt-in local memory, OFF by default
+- 🧪 Silent text-only AI console
+- 📋 Conversation session state
+- 📋 Reminders
+- 📋 Owner permission model
+- 📋 Optional stronger online fallback for difficult questions
 
-- 📋 Person detection
-- 📋 Face / head position
-- 📋 PTZ tracking
-- 📋 Motion-aware scan behavior
-- 📋 Speaker-facing behavior
+Success condition:
 
-## Phase 6 — Memory and autonomy
+```text
+"Gini, explain this" → short useful local answer
+known physical commands → instant deterministic action
+```
 
-- 📋 Familiar-person memory
-- 📋 Conversation memory
+## Phase 3 — Vision + presence ← CURRENT CORE MILESTONE 🧪
+
+See [vision-v0.5.md](vision-v0.5.md).
+
+- 🧪 Low-CPU live video processing
+- 🧪 Face detection
+- 🧪 One-target selection
+- 🧪 Face-center error calculation
+- 🧪 PTZ dead zone
+- 🧪 Stable-frame filter
+- 🧪 PTZ movement cooldown
+- 🧪 Dry-run tracker
+- 🧪 Bounded native PTZ bridge
+- 📋 Hardware-verify short native PTZ tracking pulses
+- 📋 Face follows left/right
+- 📋 Face follows up/down
+- 📋 Target reacquisition
+- 📋 Idle behavior
+- 📋 Person detection when face is not visible
+
+Success condition:
+
+```text
+person moves in frame
+      ↓
+Gini detects face
+      ↓
+native PTZ gently recenters face
+```
+
+Hardware target:
+
+> **"Gini, look at me." → finds the face → turns toward the user → keeps them centered.**
+
+## Phase 4 — Presence state + natural conversation 📋
+
+- 📋 SLEEPING
+- 📋 AWARE
+- 📋 ENGAGED
+- 📋 TRACKING
+- 📋 Conversation timeout
+- 📋 No repeated wake word during an engaged session
+- 📋 Speaker-facing behavior while talking
+- 📋 Return to aware/idle after conversation
+
+Success condition:
+
+```text
+walk into room → Gini notices → "Gini" → conversation → follow user gently
+```
+
+## Phase 5 — Useful daily skills 📋
+
+- ✅ Time/date local skill
+- ✅ PC status local skill
+- ✅ Local notes
+- 📋 Reminders and timers
+- 📋 Calendar integration
+- 📋 Weather/information when internet is available
+- 📋 Home Assistant / MQTT
+- 📋 Safe PC controls
+- 📋 Remote-presence mode
+
+## Phase 6 — Recognition + memory 📋
+
+- 📋 Owner recognition
+- 📋 Familiar-person opt-in recognition
+- 📋 Permission levels by person
+- 📋 Encrypted local memory option
 - 📋 Object/location observations
-- 📋 Security/watch mode
-- 📋 Home-automation integrations
+- 📋 "Where did I leave..." experiments
 
-## Later hardware options
+Recognition must be opt-in and local-first.
 
-Wheels or a mobile base are intentionally postponed until the camera-only robot head is stable.
+## Phase 7 — Product hardening 📋
+
+- 📋 Safe camera password change
+- 📋 One-command installer
+- 📋 Automatic startup
+- 📋 Watchdog/recovery
+- 📋 Resource limits
+- 📋 Hardware privacy state
+- 📋 Visible listening / thinking / remote-presence state
+- 📋 Dashboard
+- 📋 Update/rollback path
+
+## Later hardware
+
+Wheels, mobile bases and robot arms remain deliberately later.
+
+Gini first needs to become a convincing, useful stationary physical AI presence.
