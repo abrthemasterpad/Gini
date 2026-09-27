@@ -188,6 +188,20 @@ def main():
     parser.add_argument("--pulse-ms", type=int, default=int(os.environ.get("GINI_VISION_PULSE_MS", "180")))
     parser.add_argument("--max-live-moves", type=int, default=int(os.environ.get("GINI_VISION_MAX_LIVE_MOVES", "8")))
     parser.add_argument("--live-seconds", type=int, default=int(os.environ.get("GINI_VISION_LIVE_SECONDS", "60")))
+    mirror_default = os.environ.get("GINI_VISION_MIRROR_X", "1") != "0"
+    parser.add_argument(
+        "--mirror-x",
+        dest="mirror_x",
+        action="store_true",
+        default=mirror_default,
+        help="Correct the horizontally mirrored camera feed before detection/tracking."
+    )
+    parser.add_argument(
+        "--no-mirror-x",
+        dest="mirror_x",
+        action="store_false",
+        help="Disable horizontal mirror correction."
+    )
     parser.add_argument("--live", action="store_true", help="Actually move Gini. Default is dry-run.")
     parser.add_argument("--preview", action="store_true", help="Show a local preview window.")
     args = parser.parse_args()
@@ -236,6 +250,7 @@ def main():
     print("Mode:", "LIVE PTZ" if args.live else "DRY RUN - motors disabled")
     print("Source:", args.source)
     print("Processing:", f"{args.width}x{args.height} @ {args.fps:g} FPS")
+    print("Mirror correction:", "ON" if args.mirror_x else "OFF")
     print("Dead zone:", args.deadzone_x, args.deadzone_y)
     print("Stable frames:", args.stable_frames)
     print("PTZ pulse:", args.pulse_ms, "ms")
@@ -276,6 +291,13 @@ def main():
                 raise RuntimeError("Video stream ended. " + stderr[-800:])
 
             frame = np.frombuffer(raw, dtype=np.uint8).reshape((args.height, args.width, 3)).copy()
+
+            # The tested Gini camera feed is horizontally mirrored.
+            # Flip BEFORE detection so both preview and PTZ direction mapping
+            # match the person's real-world left/right movement.
+            if args.mirror_x:
+                frame = cv2.flip(frame, 1)
+
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray = cv2.equalizeHist(gray)
 
