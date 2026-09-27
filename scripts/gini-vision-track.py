@@ -266,7 +266,7 @@ def main():
                 stderr = ffmpeg.stderr.read().decode("utf-8", errors="replace")
                 raise RuntimeError("Video stream ended. " + stderr[-800:])
 
-            frame = np.frombuffer(raw, dtype=np.uint8).reshape((args.height, args.width, 3))
+            frame = np.frombuffer(raw, dtype=np.uint8).reshape((args.height, args.width, 3)).copy()
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray = cv2.equalizeHist(gray)
 
