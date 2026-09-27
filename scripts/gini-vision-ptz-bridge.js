@@ -118,6 +118,7 @@ API.onloginresult = function (conn, result) {
   connection.logined = true;
   ready = true;
   process.stdout.write("READY\n");
+  process.stdout.write("GINI_PTZ_READY\n");
 };
 
 const rl = readline.createInterface({
@@ -135,21 +136,29 @@ rl.on("line", async line => {
 
   if (!PTZ_TYPES[cmd]) {
     process.stdout.write("IGNORED " + cmd + "\n");
+    process.stdout.write("GINI_PTZ_ACK IGNORED " + cmd + "\n");
     return;
   }
 
   if (!ready) {
     process.stdout.write("NOT_READY\n");
+    process.stdout.write("GINI_PTZ_ACK NOT_READY\n");
     return;
   }
 
   if (busy) {
     process.stdout.write("BUSY\n");
+    process.stdout.write("GINI_PTZ_ACK BUSY\n");
     return;
   }
 
   const ok = await pulse(cmd);
   process.stdout.write(ok ? "MOVED " + cmd + "\n" : "BLOCKED " + cmd + "\n");
+  process.stdout.write(
+    "GINI_PTZ_ACK " +
+    (ok ? "MOVED " + cmd : "BLOCKED " + cmd) +
+    "\n"
+  );
 });
 
 process.on("SIGINT", () => shutdown(0));
