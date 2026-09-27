@@ -22,8 +22,9 @@ recordings/
 logs/
 runtime/
 
-# Local speech models
+# Local speech models / binaries
 models/*.bin
+tools/
 
 # Local third-party research copies
 esee-sdk/
