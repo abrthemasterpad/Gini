@@ -8,6 +8,7 @@ const {
 } = require("./gini-assistant-security");
 
 const memory = require("./gini-assistant-memory");
+const Skills = require("./gini-skills");
 
 const PROVIDER = (process.env.GINI_AI_PROVIDER || "ollama").toLowerCase();
 const OLLAMA_URL = process.env.GINI_OLLAMA_URL || "http://127.0.0.1:11434";
@@ -292,6 +293,18 @@ function applyMemoryOperations(decision) {
 }
 
 async function decide(userText) {
+  const skill = Skills.matchSkill(userText);
+
+  if (skill.matched) {
+    return {
+      reply: skill.reply,
+      actions: skill.actions || [],
+      memory: [],
+      source: "local-skill",
+      skill: skill.name
+    };
+  }
+
   const explicit = explicitMemoryDecision(userText);
 
   if (explicit) {
