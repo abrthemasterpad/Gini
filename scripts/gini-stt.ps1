@@ -41,6 +41,7 @@ $args = @(
     "--no-timestamps",
     "--output-txt",
     "--output-file", $TranscriptBase,
+    "--prompt", "The assistant wake word is Gini, spelled G-i-n-i. Common commands: Gini turn left, Gini turn right, Gini look up, Gini look down.",
     "--no-prints"
 )
 
@@ -65,4 +66,3 @@ if ([string]::IsNullOrWhiteSpace($text)) {
 Write-Host "YOU SAID:" -ForegroundColor Cyan
 Write-Host $text -ForegroundColor Green
 
-$text
