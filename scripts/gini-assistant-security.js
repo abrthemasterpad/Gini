@@ -1,5 +1,7 @@
 "use strict";
 
+require("./gini-env");
+
 const DEFAULT_MAX_REPLY_CHARS = 320;
 const DEFAULT_ACTIONS_PER_MINUTE = 6;
 
