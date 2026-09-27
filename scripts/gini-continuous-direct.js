@@ -18,17 +18,23 @@ const STREAM = Number(process.env.GINI_CAMERA_STREAM || 0);
 
 const SPEECH_THRESHOLD_DB = Number(process.env.GINI_SPEECH_THRESHOLD_DB || -36);
 const STEP = Number(process.env.GINI_PTZ_STEP || 1);
-const SPEED = Number(process.env.GINI_PTZ_SPEED || 8);
+const NATIVE_PTZ_SPEED = Math.max(
+  1,
+  Math.min(5, Number(process.env.GINI_NATIVE_PTZ_SPEED || 3))
+);
+const NATIVE_PTZ_MOVE_MS = Math.max(
+  100,
+  Number(process.env.GINI_NATIVE_PTZ_MOVE_MS || 250)
+);
 
 const FFMPEG = "ffmpeg.exe";
 const POWERSHELL = "powershell.exe";
 const WHISPER = path.join(ROOT, "tools", "whisper", "Release", "whisper-cli.exe");
 const MODEL = path.join(ROOT, "models", "ggml-base-q5_1.bin");
-const PTZ = path.join(ROOT, "gini.ps1");
 const SAY_CAMERA = path.join(ROOT, "gini-say.ps1");
 const SAY_LOCAL = path.join(ROOT, "scripts", "gini-say-local.ps1");
-const SPEAKER_MODE = (process.env.GINI_SPEAKER_MODE || "local").toLowerCase();
-const SAY = SPEAKER_MODE === "camera" ? SAY_CAMERA : SAY_LOCAL;
+const SPEAKER_MODE = (process.env.GINI_SPEAKER_MODE || "camera").toLowerCase();
+const SAY = SPEAKER_MODE === "local" ? SAY_LOCAL : SAY_CAMERA;
 
 const AAC = path.join(RUNTIME, "gini-direct-window.aac");
 const WAV = path.join(RUNTIME, "gini-direct-window.wav");
@@ -37,7 +43,7 @@ const TRANSCRIPT = TRANSCRIPT_BASE + ".txt";
 
 fs.mkdirSync(RUNTIME, { recursive: true });
 
-for (const required of [WHISPER, MODEL, PTZ, SAY]) {
+for (const required of [WHISPER, MODEL, SAY]) {
   if (!fs.existsSync(required)) {
     console.error("Missing required file:", required);
     process.exit(2);
@@ -311,6 +317,41 @@ async function restartListeningConnection() {
   return false;
 }
 
+async function nativePtz(action) {
+  const ptzTypes = {
+    up: 2,
+    down: 3,
+    left: 4,
+    right: 5
+  };
+
+  const type = ptzTypes[action];
+
+  if (!type) {
+    throw new Error("Unsupported native PTZ action: " + action);
+  }
+
+  if (!connection || !opened) {
+    throw new Error("Native PTZ requires an active Gini live session.");
+  }
+
+  const duration = NATIVE_PTZ_MOVE_MS * Math.max(1, Math.min(4, STEP));
+
+  console.log(
+    "NATIVE PTZ:",
+    action,
+    "speed=" + NATIVE_PTZ_SPEED,
+    "duration=" + duration + "ms"
+  );
+
+  // Keep PTZ on the same native WebSocket session as the live mic.
+  // Hardware test proved this path preserves AAC, unlike the old CGI PTZ.
+  Player.ptz_ctrl("", IP, 0, type, NATIVE_PTZ_SPEED);
+  await sleep(duration);
+  Player.ptz_ctrl("", IP, 0, 0, NATIVE_PTZ_SPEED);
+  await sleep(150);
+}
+
 async function performCommand(command) {
   const parsed = parseCommand(command);
 
@@ -322,23 +363,19 @@ async function performCommand(command) {
   if (parsed.action) {
     console.log("ACTION:", parsed.action);
 
-    await run(
-      POWERSHELL,
-      [
-        "-NoProfile",
-        "-ExecutionPolicy", "Bypass",
-        "-File", PTZ,
-        "-Action", parsed.action,
-        "-Step", String(STEP),
-        "-Speed", String(SPEED)
-      ],
-      { inherit: true }
-    );
+    try {
+      await nativePtz(parsed.action);
+    } catch (err) {
+      console.error("Native PTZ failed:", err.message);
+      suppressAudio = false;
+      return;
+    }
   }
 
   if (SPEAKER_MODE === "camera") {
-    // Stock T18205-A firmware can freeze native mic audio after VOP2P
-    // talkback. Camera-speaker mode is kept only as an experimental path.
+    // Camera speaker path: first close the native listening stream,
+    // then use the hardware-verified safe VOP2P hangup sequence.
+    // The old mic freeze was isolated to CGI PTZ, which is no longer used.
     await pauseListeningBeforeTalkback();
 
     const sayResult = await run(
@@ -582,12 +619,13 @@ API.onrecvframeex = function (
 };
 
 console.log("==================================================");
-console.log("GINI CONTINUOUS BRAIN v0.3.0");
+console.log("GINI CONTINUOUS BRAIN v0.3.1");
 console.log("==================================================");
 console.log("Foreground native stream - no hidden background process");
 console.log("Wake word: Gini");
 console.log("VAD threshold:", SPEECH_THRESHOLD_DB, "dB");
-console.log("Speaker mode:", SPEAKER_MODE, SPEAKER_MODE === "local" ? "(stable)" : "(experimental camera talkback)");
+console.log("PTZ mode: native SDK (mic-safe)");
+console.log("Speaker mode:", SPEAKER_MODE, SPEAKER_MODE === "camera" ? "(Gini camera speaker)" : "(Windows fallback)");
 console.log("");
 
 connectCamera();
