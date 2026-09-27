@@ -120,3 +120,28 @@ Do not expose camera control interfaces directly to the public internet. Use a s
 ## License
 
 This repository currently uses the license selected by the repository owner. See [LICENSE](LICENSE).
+
+
+## Gini Teacher v0.1
+
+Gini can reuse the local Rebuildo Voice Artist as a multilingual teaching voice.
+
+Current v0.1 test path:
+
+```text
+Tamil explanation -> Hindi/Japanese native voice -> camera speaker -> child repeats
+```
+
+Commands:
+
+```powershell
+node .\scripts\gini-teacher.js status
+node .\scripts\gini-teacher.js demo hi
+node .\scripts\gini-teacher.js lesson hi
+node .\scripts\gini-teacher.js demo ja
+node .\scripts\gini-teacher.js lesson ja
+```
+
+Arabic is intentionally not enabled until a local voice engine passes the Gini fit test.
+
+See `docs/teacher-v0.1.md`.
