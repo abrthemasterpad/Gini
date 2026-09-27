@@ -83,14 +83,25 @@ def choose_target(faces, previous_center, width, height):
     return max(candidates, key=lambda item: item[6])
 
 
-def direction_for_target(target, width, height, deadzone_x, deadzone_y):
+def direction_for_target(
+    target,
+    width,
+    height,
+    deadzone_x,
+    deadzone_y,
+    target_x=0.50,
+    target_y=0.55
+):
     if target is None:
         return None, 0.0, 0.0
 
     _, _, _, _, cx, cy, _ = target
 
-    ex = (cx - width / 2.0) / (width / 2.0)
-    ey = (cy - height / 2.0) / (height / 2.0)
+    target_px = width * target_x
+    target_py = height * target_y
+
+    ex = (cx - target_px) / (width / 2.0)
+    ey = (cy - target_py) / (height / 2.0)
 
     x_over = abs(ex) - deadzone_x
     y_over = abs(ey) - deadzone_y
@@ -181,6 +192,8 @@ def main():
     parser.add_argument("--width", type=int, default=int(os.environ.get("GINI_VISION_WIDTH", "640")))
     parser.add_argument("--height", type=int, default=int(os.environ.get("GINI_VISION_HEIGHT", "360")))
     parser.add_argument("--fps", type=float, default=float(os.environ.get("GINI_VISION_FPS", "4")))
+    parser.add_argument("--target-x", type=float, default=float(os.environ.get("GINI_VISION_TARGET_X", "0.50")))
+    parser.add_argument("--target-y", type=float, default=float(os.environ.get("GINI_VISION_TARGET_Y", "0.55")))
     parser.add_argument("--deadzone-x", type=float, default=float(os.environ.get("GINI_VISION_DEADZONE_X", "0.13")))
     parser.add_argument("--deadzone-y", type=float, default=float(os.environ.get("GINI_VISION_DEADZONE_Y", "0.16")))
     parser.add_argument("--stable-frames", type=int, default=int(os.environ.get("GINI_VISION_STABLE_FRAMES", "3")))
@@ -251,6 +264,7 @@ def main():
     print("Source:", args.source)
     print("Processing:", f"{args.width}x{args.height} @ {args.fps:g} FPS")
     print("Mirror correction:", "ON" if args.mirror_x else "OFF")
+    print("Target point:", args.target_x, args.target_y)
     print("Dead zone:", args.deadzone_x, args.deadzone_y)
     print("Stable frames:", args.stable_frames)
     print("PTZ pulse:", args.pulse_ms, "ms")
@@ -324,12 +338,12 @@ def main():
                     cv2.rectangle(
                         frame,
                         (
-                            int(args.width * (0.5 - args.deadzone_x / 2)),
-                            int(args.height * (0.5 - args.deadzone_y / 2))
+                            int(args.width * (args.target_x - args.deadzone_x / 2)),
+                            int(args.height * (args.target_y - args.deadzone_y / 2))
                         ),
                         (
-                            int(args.width * (0.5 + args.deadzone_x / 2)),
-                            int(args.height * (0.5 + args.deadzone_y / 2))
+                            int(args.width * (args.target_x + args.deadzone_x / 2)),
+                            int(args.height * (args.target_y + args.deadzone_y / 2))
                         ),
                         (255, 255, 255),
                         1
@@ -349,7 +363,9 @@ def main():
                 args.width,
                 args.height,
                 args.deadzone_x,
-                args.deadzone_y
+                args.deadzone_y,
+                args.target_x,
+                args.target_y
             )
 
             if direction == stable_direction:
@@ -409,10 +425,10 @@ def main():
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 255, 255), 2)
                 cv2.circle(frame, (int(cx), int(cy)), 4, (255, 255, 255), -1)
 
-                dz_left = int(args.width * (0.5 - args.deadzone_x))
-                dz_right = int(args.width * (0.5 + args.deadzone_x))
-                dz_top = int(args.height * (0.5 - args.deadzone_y))
-                dz_bottom = int(args.height * (0.5 + args.deadzone_y))
+                dz_left = int(args.width * (args.target_x - args.deadzone_x / 2))
+                dz_right = int(args.width * (args.target_x + args.deadzone_x / 2))
+                dz_top = int(args.height * (args.target_y - args.deadzone_y / 2))
+                dz_bottom = int(args.height * (args.target_y + args.deadzone_y / 2))
 
                 cv2.rectangle(
                     frame,
