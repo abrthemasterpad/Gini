@@ -8,8 +8,8 @@ try:
     import cv2
     import numpy as np
 except ImportError:
-    print("Missing Python dependency: opencv-python-headless")
-    print("Run: py -3 -m pip install --user opencv-python-headless")
+    print("Missing Python dependency: OpenCV.")
+    print("Run: powershell -ExecutionPolicy Bypass -File .\\scripts\\gini-vision-setup.ps1")
     sys.exit(2)
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -193,11 +193,40 @@ def main():
     if args.width < 160 or args.height < 90:
         raise SystemExit("Frame size is too small.")
 
-    cascade_path = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
+    version = getattr(cv2, "__version__", "unknown")
+
+    if not hasattr(cv2, "CascadeClassifier"):
+        raise SystemExit(
+            "Installed OpenCV " + version +
+            " does not provide CascadeClassifier. "
+            "Run: powershell -ExecutionPolicy Bypass -File .\\scripts\\gini-vision-setup.ps1"
+        )
+
+    data = getattr(cv2, "data", None)
+    haar_dir = getattr(data, "haarcascades", "") if data is not None else ""
+
+    if not haar_dir:
+        raise SystemExit(
+            "Installed OpenCV " + version +
+            " does not expose Haar cascade data. "
+            "Run the Gini vision setup repair."
+        )
+
+    cascade_path = os.path.join(
+        haar_dir,
+        "haarcascade_frontalface_default.xml"
+    )
+
+    if not os.path.exists(cascade_path):
+        raise SystemExit(
+            "Face cascade file is missing: " + cascade_path +
+            ". Run the Gini vision setup repair."
+        )
+
     detector = cv2.CascadeClassifier(cascade_path)
 
     if detector.empty():
-        raise SystemExit("OpenCV face cascade could not be loaded.")
+        raise SystemExit("OpenCV face cascade exists but could not be loaded.")
 
     print("=" * 58)
     print("GINI VISION v0.5 - FACE PRESENCE / CENTERING")
