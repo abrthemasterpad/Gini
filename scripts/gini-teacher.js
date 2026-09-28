@@ -10,23 +10,29 @@ const TAMIL_VOICE = process.env.GINI_TEACHER_TAMIL_VOICE || "female";
 const TARGET_DELIVERY = process.env.GINI_TEACHER_TARGET_DELIVERY || "clear";
 const TAMIL_DELIVERY = process.env.GINI_TEACHER_TAMIL_DELIVERY || "natural";
 const CHILD_LISTEN_SECONDS = Number(
-  process.env.GINI_TEACHER_LISTEN_SECONDS || 3.2
+  process.env.GINI_TEACHER_LISTEN_SECONDS || 2.6
 );
+const TRANSCRIBE_CHILD = process.env.GINI_TEACHER_TRANSCRIBE === "1";
 
 function usage() {
   console.log("");
-  console.log("Gini Teacher v0.2 - hands-free conversation");
+  console.log("Gini Teacher v0.3 - natural hands-free lesson");
   console.log("");
   console.log("Commands:");
   console.log("  node .\\scripts\\gini-teacher.js status");
-  console.log("  node .\\scripts\\gini-teacher.js demo hi       # 1-word hands-free sample");
-  console.log("  node .\\scripts\\gini-teacher.js demo ja       # 1-word hands-free sample");
-  console.log("  node .\\scripts\\gini-teacher.js lesson hi     # all 5 words, no keyboard");
-  console.log("  node .\\scripts\\gini-teacher.js lesson ja     # all 5 words, no keyboard");
+  console.log("  node .\\scripts\\gini-teacher.js demo hi");
+  console.log("  node .\\scripts\\gini-teacher.js demo ja");
+  console.log("  node .\\scripts\\gini-teacher.js lesson hi");
+  console.log("  node .\\scripts\\gini-teacher.js lesson ja");
   console.log("");
-  console.log("hi = Hindi, ja = Japanese");
-  console.log("Arabic remains disabled until a local Arabic voice passes the fit test.");
+  console.log("demo = one word");
+  console.log("lesson = all 5 words");
+  console.log("No keyboard interaction is required during a lesson.");
   console.log("");
+}
+
+function tamilLanguageName(lesson) {
+  return lesson.id === "ja" ? "ஜப்பானிய" : "ஹிந்தி";
 }
 
 function tamilSegment(text) {
@@ -35,7 +41,7 @@ function tamilSegment(text) {
     voice: TAMIL_VOICE,
     delivery: TAMIL_DELIVERY,
     preset: "storyteller",
-    speed: 0.96,
+    speed: 0.98,
     mode: "standard",
     text
   };
@@ -47,7 +53,7 @@ function targetSegment(lesson, item) {
     voice: lesson.voice,
     delivery: TARGET_DELIVERY,
     preset: "storyteller",
-    speed: 0.88,
+    speed: 0.90,
     mode: "standard",
     text: item.target
   };
@@ -59,16 +65,11 @@ async function speakTamil(text) {
 }
 
 async function speakTeachingTurn(lesson, item, index, leadTamil = "") {
-  const position = index === 0 ? "முதல் வார்த்தை." : "அடுத்த வார்த்தை.";
-  const direction = index === 0
-    ? "நான் சொல்லி முடித்ததும் ஒரு கணம் காத்திருந்து நீ திருப்பிச் சொல்லு."
-    : "கேட்டு, ஒரு கணம் காத்திருந்து நீ திருப்பிச் சொல்லு.";
-
+  const first = index === 0;
   const prompt = [
     leadTamil,
-    position,
-    "இதன் அர்த்தம் " + item.meaningTamil + ".",
-    direction
+    first ? "முதல் வார்த்தை." : "அடுத்தது.",
+    "இதன் அர்த்தம் " + item.meaningTamil + "."
   ].filter(Boolean).join(" ");
 
   console.log("");
@@ -76,38 +77,60 @@ async function speakTeachingTurn(lesson, item, index, leadTamil = "") {
     "[" + (index + 1) + "] " +
     item.meaningTamil + " -> " + item.target + " / " + item.roman
   );
-  console.log("Gini [Tamil -> " + lesson.name + "]:", prompt, "=>", item.target);
+  console.log(
+    "Gini [Tamil -> " + lesson.name + "]:",
+    prompt,
+    "=>",
+    item.target
+  );
 
-  // One camera utterance: Tamil teaching cue, a short natural pause, then the
-  // native Hindi/Japanese target. As soon as this finishes, Gini opens its mic.
   await Voice.speakSequence(
     [
       tamilSegment(prompt),
       targetSegment(lesson, item)
     ],
-    { pauseMs: 220 }
+    { pauseMs: 180 }
   );
 }
 
+async function speakRetryTurn(lesson, item) {
+  console.log(
+    "Gini [retry -> " + lesson.name + "]:",
+    item.target
+  );
+
+  await Voice.speakSequence(
+    [
+      tamilSegment("கேட்கவில்லை. இன்னொரு முறை சொல்லிப் பார்."),
+      targetSegment(lesson, item)
+    ],
+    { pauseMs: 160 }
+  );
+}
+
+function safeDb(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(1) + " dB" : "unknown dB";
+}
+
 function describeHeard(result) {
-  if (!result) return "nothing";
+  if (!result) return "none";
 
-  if (result.heardSpeech) {
-    console.log(
-      "Gini [HEARD CHILD]:",
-      result.text,
-      "|",
-      Number(result.maxDb || -100).toFixed(1) + " dB"
-    );
-    return "speech";
-  }
-
-  if (result.heardAudio) {
-    console.log(
-      "Gini [HEARD AUDIO]: speech was not confidently transcribed |",
-      Number(result.maxDb || -100).toFixed(1) + " dB"
-    );
-    return "audio";
+  if (result.voiceDetected || result.heardAudio) {
+    if (result.text) {
+      console.log(
+        "Gini [HEARD CHILD]:",
+        result.text,
+        "|",
+        safeDb(result.maxDb)
+      );
+    } else {
+      console.log(
+        "Gini [CHILD VOICE]: detected |",
+        safeDb(result.maxDb)
+      );
+    }
+    return "voice";
   }
 
   console.log("Gini [NO CHILD VOICE DETECTED]");
@@ -117,14 +140,15 @@ function describeHeard(result) {
 async function listenForChild(lesson) {
   return Listen.listenOnce({
     language: lesson.language,
-    seconds: CHILD_LISTEN_SECONDS
+    seconds: CHILD_LISTEN_SECONDS,
+    transcribe: TRANSCRIBE_CHILD
   });
 }
 
 async function status() {
-  console.log("=".repeat(62));
-  console.log("GINI TEACHER v0.2 - STATUS");
-  console.log("=".repeat(62));
+  console.log("=".repeat(64));
+  console.log("GINI TEACHER v0.3 - STATUS");
+  console.log("=".repeat(64));
   console.log("Rebuildo:", Voice.config.rebuildoUrl);
 
   const talkback = Voice.talkbackStatus();
@@ -135,22 +159,27 @@ async function status() {
   } else {
     console.log("Camera talkback: NOT READY");
     console.log("Expected verified runtime:", talkback.path);
-    if (talkback.alsoChecked) {
-      console.log("Also checked:", talkback.alsoChecked);
-    }
   }
 
   const listening = Listen.status();
+
   console.log(
     "Hands-free child listening:",
     listening.ok ? "READY" : "NOT READY"
   );
   console.log(
-    "Listening window:",
-    (listening.listenMs / 1000).toFixed(1) + "s",
-    "| speech threshold:",
+    "Turn window:",
+    (CHILD_LISTEN_SECONDS).toFixed(1) + "s",
+    "| threshold:",
     listening.speechThresholdDb + " dB"
   );
+  console.log(
+    "Child response mode:",
+    TRANSCRIBE_CHILD
+      ? "Whisper debug transcription + voice detection"
+      : "FAST voice-turn detection"
+  );
+  console.log("Pronunciation scoring: OFF");
 
   if (!listening.ok) {
     for (const missing of listening.missing) {
@@ -204,9 +233,8 @@ async function status() {
 
   console.log("  ar  Arabic  planned - local voice not selected yet");
   console.log("");
-  console.log("demo   = one-word hands-free hardware sample");
-  console.log("lesson = full five-word hands-free conversation");
-  console.log("No ENTER key is required during a lesson.");
+  console.log("Flow: Gini teaches -> child replies -> Gini hears voice -> next word");
+  console.log("No screen or ENTER key is required.");
 }
 
 async function runLesson(languageId, maxItems = null, demo = false) {
@@ -236,6 +264,7 @@ async function runLesson(languageId, maxItems = null, demo = false) {
   }
 
   const listening = Listen.status();
+
   if (!listening.ok) {
     throw new Error(
       "Hands-free child listening is not ready. Missing: " +
@@ -248,31 +277,29 @@ async function runLesson(languageId, maxItems = null, demo = false) {
     : lesson.items.slice(0, Math.max(1, maxItems));
 
   console.log("");
-  console.log("=".repeat(62));
+  console.log("=".repeat(64));
   console.log(
-    "GINI TEACHER v0.2 - " +
+    "GINI TEACHER v0.3 - " +
     lesson.name.toUpperCase() +
     (demo ? " DEMO" : "")
   );
-  console.log("Hands-free: Gini speaks -> automatically listens -> continues");
+  console.log("Natural flow: Gini speaks -> child replies -> Gini continues");
   console.log("Keyboard / screen confirmation: NOT REQUIRED");
-  console.log("Pronunciation scoring: OFF - Gini only confirms that it heard the child");
-  console.log("=".repeat(62));
+  console.log("Pronunciation scoring: OFF");
+  console.log("=".repeat(64));
   console.log("");
 
-  const intro = demo
-    ? (
-      "சரி. ஒரு " + lesson.name +
-      " வார்த்தையை sample ஆக பார்க்கலாம். " +
-      "நான் வார்த்தையை சொல்லி முடித்ததும் ஒரு கணம் காத்திருந்து நீ திருப்பிச் சொல்லு."
-    )
-    : (
-      lesson.introTamil +
-      " ஒவ்வொரு வார்த்தையையும் நான் சொல்லி முடித்ததும் ஒரு கணம் காத்திருந்து நீ திருப்பிச் சொல்லு. " +
-      "நான் தானாகவே உன் பதிலை கேட்பேன். Screen பார்க்க வேண்டாம்."
+  if (demo) {
+    await speakTamil(
+      "சரி. ஒரு " + tamilLanguageName(lesson) +
+      " வார்த்தை மட்டும் பார்க்கலாம். நான் சொன்னதும் நீ திருப்பிச் சொல்லு."
     );
-
-  await speakTamil(intro);
+  } else {
+    await speakTamil(
+      "சரி. இன்று " + tamilLanguageName(lesson) +
+      " மொழியில் ஐந்து வார்த்தைகள் கற்போம். நான் சொன்னதும் நீ திருப்பிச் சொல்லு."
+    );
+  }
 
   let leadTamil = "";
 
@@ -286,37 +313,29 @@ async function runLesson(languageId, maxItems = null, demo = false) {
       leadTamil
     );
 
-    // Important: no "press Enter" and no extra spoken prompt after the target.
-    // The mic opens automatically as the child's conversational turn.
     let heard = await listenForChild(lesson);
     let heardKind = describeHeard(heard);
 
     if (heardKind === "none") {
-      await speakTamil("உன் குரல் கேட்கவில்லை. இன்னொரு முறை சொல்லிப் பார்.");
-
+      await speakRetryTurn(lesson, item);
       heard = await listenForChild(lesson);
       heardKind = describeHeard(heard);
     }
 
-    if (heardKind === "speech") {
-      leadTamil = "ஆமாம், கேட்டேன். சூப்பர்.";
-    } else if (heardKind === "audio") {
-      leadTamil = "உன் குரல் கேட்டது. நல்ல முயற்சி.";
-    } else {
-      leadTamil = "பரவாயில்லை.";
-    }
+    leadTamil = heardKind === "voice"
+      ? "சூப்பர்."
+      : "பரவாயில்லை.";
   }
-
-  const endingLead = leadTamil || "சூப்பர்.";
 
   if (demo) {
     await speakTamil(
-      endingLead +
-      " Demo முடிந்தது. Full lesson போட்டால் ஐந்து வார்த்தைகளையும் தொடர்ந்து கற்போம்."
+      (leadTamil || "சூப்பர்.") +
+      " Demo முடிந்தது."
     );
   } else {
     await speakTamil(
-      endingLead + " " + lesson.outroTamil
+      (leadTamil || "சூப்பர்.") +
+      " இன்று ஐந்து வார்த்தைகள் முடிந்தது."
     );
   }
 
