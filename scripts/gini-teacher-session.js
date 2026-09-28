@@ -188,12 +188,15 @@ async function teachOne(language, item, index) {
   let heard = await listenForChild(language, target);
 
   if (heard.state === "pass") {
-    await speakSoftTamil("அருமை. நன்றாக சொன்னாய்.");
+    await feedback("ஆம். இந்த வார்த்தையை சரியாக சொன்னாய். அருமை.", "happy");
     return;
   }
 
   if (heard.state === "heard") {
-    await speakSoftTamil("கேட்டேன். நல்ல முயற்சி. அடுத்ததுக்கு போகலாம்.");
+    await feedback(
+      "கேட்டேன். நீ முயற்சி செய்தது நல்லது. உச்சரிப்பை நான் இப்போ மதிப்பிட மாட்டேன். அடுத்ததுக்கு போகலாம்.",
+      "acknowledge"
+    );
     return;
   }
 
