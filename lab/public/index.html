@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Gini Lab</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0d12;
+      --panel: #121722;
+      --card: #171d2a;
+      --line: #263044;
+      --text: #f3f6fb;
+      --muted: #9da9bb;
+      --good: #55d68b;
+      --warn: #f2bf59;
+      --bad: #ff7373;
+      --accent: #8da8ff;
+      --accent-2: #b89bff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(141,168,255,.12), transparent 28rem),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .shell {
+      width: min(1440px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 24px 0 48px;
+    }
+    .topbar {
+      display: flex;
+      gap: 18px;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 48px);
+      letter-spacing: -.04em;
+    }
+    .brand p {
+      color: var(--muted);
+      margin: 8px 0 0;
+      max-width: 760px;
+      line-height: 1.55;
+    }
+    .task-pill {
+      min-width: 220px;
+      border: 1px solid var(--line);
+      background: rgba(18,23,34,.86);
+      border-radius: 16px;
+      padding: 12px 14px;
+    }
+    .task-pill small { color: var(--muted); display: block; }
+    .task-pill strong { display: block; margin-top: 4px; overflow-wrap: anywhere; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0,1fr));
+      gap: 14px;
+    }
+    .panel {
+      background: rgba(18,23,34,.9);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 18px;
+      min-width: 0;
+    }
+    .panel h2 {
+      margin: 0 0 6px;
+      font-size: 18px;
+    }
+    .panel p.sub {
+      margin: 0 0 16px;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 14px;
+    }
+    .system { grid-column: span 12; }
+    .behaviors { grid-column: span 7; }
+    .head { grid-column: span 5; }
+    .teacher { grid-column: span 6; }
+    .voice { grid-column: span 6; }
+    .vision { grid-column: span 6; }
+    .assistant { grid-column: span 6; }
+    .logs { grid-column: span 12; }
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(4,minmax(0,1fr));
+      gap: 10px;
+    }
+    .status-card {
+      border: 1px solid var(--line);
+      background: var(--card);
+      border-radius: 14px;
+      padding: 13px;
+    }
+    .status-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+    .status-card strong { font-size: 14px; }
+    .dot {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      margin-right: 7px;
+      background: var(--warn);
+    }
+    .dot.ok { background: var(--good); }
+    .dot.bad { background: var(--bad); }
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(3,minmax(0,1fr));
+      gap: 9px;
+    }
+    .btn {
+      min-height: 46px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--card);
+      color: var(--text);
+      padding: 10px 12px;
+      transition: transform .12s ease, border-color .12s ease;
+    }
+    .btn:hover { border-color: #4a5b78; }
+    .btn:active { transform: scale(.985); }
+    .btn.primary {
+      background: linear-gradient(135deg, rgba(141,168,255,.19), rgba(184,155,255,.14));
+      border-color: #53688d;
+    }
+    .btn.good { border-color: rgba(85,214,139,.45); }
+    .btn.warn { border-color: rgba(242,191,89,.5); }
+    .btn.bad { border-color: rgba(255,115,115,.45); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .row {
+      display: flex;
+      gap: 9px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .field {
+      flex: 1 1 150px;
+      min-width: 0;
+    }
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+    input, select {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid var(--line);
+      background: #0f141e;
+      color: var(--text);
+      border-radius: 12px;
+      padding: 9px 11px;
+      outline: none;
+    }
+    input:focus, select:focus { border-color: var(--accent); }
+    .note {
+      margin-top: 12px;
+      padding: 11px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: rgba(15,20,30,.7);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .robot {
+      display: grid;
+      place-items: center;
+      margin: 10px 0 16px;
+    }
+    .head-shape {
+      width: 132px;
+      height: 92px;
+      border: 2px solid #607395;
+      border-radius: 34px 34px 28px 28px;
+      background: linear-gradient(180deg, #1e2737, #131925);
+      position: relative;
+    }
+    .eye {
+      position: absolute;
+      top: 34px;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 16px rgba(141,168,255,.35);
+    }
+    .eye.left { left: 35px; }
+    .eye.right { right: 35px; }
+    .neck {
+      width: 38px;
+      height: 17px;
+      border: 2px solid #607395;
+      border-top: 0;
+      border-radius: 0 0 12px 12px;
+      margin: -1px auto 0;
+    }
+    .logs-box {
+      background: #090c11;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      min-height: 240px;
+      max-height: 420px;
+      overflow: auto;
+      padding: 12px;
+      font: 12px/1.55 Consolas, ui-monospace, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .log-info { color: #c5d2e8; }
+    .log-error { color: #ff9999; }
+    .log-warn { color: #f6cf79; }
+    .tiny { color: var(--muted); font-size: 12px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 9px;
+      color: var(--muted);
+      font-size: 12px;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+    @media (max-width: 900px) {
+      .behaviors,.head,.teacher,.voice,.vision,.assistant { grid-column: span 12; }
+      .status-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .topbar { flex-direction: column; }
+      .task-pill { width: 100%; }
+    }
+    @media (max-width: 560px) {
+      .button-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .status-grid { grid-template-columns: 1fr; }
+      .shell { width: min(100% - 18px, 1440px); padding-top: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="topbar">
+      <div class="brand">
+        <h1>Gini Lab</h1>
+        <p>
+          One local console for hearing, voice, Teacher, safe vision tests and robot expressions.
+          Gini keeps one camera owner at a time so tests do not fight over the hardware.
+        </p>
+      </div>
+      <div class="task-pill">
+        <small>Current camera task</small>
+        <strong id="taskText">Checking…</strong>
+      </div>
+    </div>
+
+    <section class="grid">
+      <article class="panel system">
+        <h2>System readiness</h2>
+        <p class="sub">Fast health checks only. These do not move Gini.</p>
+        <div class="status-grid">
+          <div class="status-card"><span>Camera native SDK</span><strong id="cameraStatus"><i class="dot"></i>Checking</strong></div>
+          <div class="status-card"><span>Vision RTSP / go2rtc</span><strong id="visionStatus"><i class="dot"></i>Checking</strong></div>
+          <div class="status-card"><span>Rebuildo voice</span><strong id="rebuildoStatus"><i class="dot"></i>Checking</strong></div>
+          <div class="status-card"><span>Ollama brain</span><strong id="ollamaStatus"><i class="dot"></i>Checking</strong></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn" id="refreshBtn">Refresh status</button>
+          <button class="btn bad" id="stopBtn">Stop current test</button>
+          <span class="badge">Native PTZ only</span>
+          <span class="badge">CGI PTZ disabled</span>
+          <span class="badge">Tamil · English · Hindi</span>
+        </div>
+      </article>
+
+      <article class="panel behaviors">
+        <h2>Voice + expression behaviors</h2>
+        <p class="sub">
+          Semantic feedback is paired with speech. A nod never silently claims Gini understood something.
+        </p>
+        <div class="row" style="margin-bottom:12px">
+          <div class="field">
+            <label for="behaviorLanguage">Spoken feedback language</label>
+            <select id="behaviorLanguage">
+              <option value="en">English</option>
+              <option value="ta">Tamil</option>
+              <option value="hi">Hindi</option>
+            </select>
+          </div>
+        </div>
+        <div class="button-grid">
+          <button class="btn good behavior" data-name="yes">✓ Yes + nod</button>
+          <button class="btn behavior" data-name="no">↔ No + gentle retry</button>
+          <button class="btn good behavior" data-name="happy">★ Happy praise</button>
+          <button class="btn behavior" data-name="encourage">◎ Encourage</button>
+          <button class="btn behavior" data-name="curious">? Curious</button>
+        </div>
+        <div class="note">
+          For safety, Gini speaks first, closes talkback cleanly, then starts the tiny native-PTZ gesture.
+          This keeps the feedback tightly coupled without running two conflicting camera sessions at once.
+        </div>
+      </article>
+
+      <article class="panel head">
+        <h2>Robot head expressions</h2>
+        <p class="sub">Tiny, symmetric, speed-1 native PTZ pulses with STOP acknowledgement after every move.</p>
+        <div class="robot" aria-hidden="true">
+          <div>
+            <div class="head-shape">
+              <span class="eye left"></span>
+              <span class="eye right"></span>
+            </div>
+            <div class="neck"></div>
+          </div>
+        </div>
+        <div class="button-grid">
+          <button class="btn expr" data-name="yes">Yes ×3</button>
+          <button class="btn expr" data-name="no">No ×3</button>
+          <button class="btn expr" data-name="happy">Happy</button>
+          <button class="btn expr" data-name="acknowledge">Acknowledge</button>
+          <button class="btn expr" data-name="curious">Curious</button>
+          <button class="btn expr" data-name="thinking">Thinking</button>
+          <button class="btn expr" data-name="sorry">Sorry</button>
+          <button class="btn expr" data-name="hello">Hello</button>
+          <button class="btn expr" data-name="excited">Excited</button>
+        </div>
+      </article>
+
+      <article class="panel teacher">
+        <h2>Gini Teacher</h2>
+        <p class="sub">One target language per session. English and Hindi use Tamil for understanding.</p>
+        <div class="row">
+          <div class="field">
+            <label for="teacherLanguage">Language</label>
+            <select id="teacherLanguage">
+              <option value="en">English + Tamil support</option>
+              <option value="hi">Hindi + Tamil support</option>
+              <option value="ta">Tamil</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="teacherMode">Length</label>
+            <select id="teacherMode">
+              <option value="demo">1-word demo</option>
+              <option value="lesson">5-word lesson</option>
+            </select>
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn primary" id="teacherStart">Start Teacher</button>
+        </div>
+        <div class="note">
+          Tamil and Hindi pronunciation correctness is deliberately not claimed yet.
+          Gini acknowledges the attempt until the phoneme/reference-audio verifier is ready.
+        </div>
+      </article>
+
+      <article class="panel voice">
+        <h2>Hearing + speaking</h2>
+        <p class="sub">Test the two ends separately before a full conversation.</p>
+        <div class="row">
+          <div class="field">
+            <label for="hearLanguage">Hearing language</label>
+            <select id="hearLanguage">
+              <option value="auto">Auto</option>
+              <option value="en">English</option>
+              <option value="ta">Tamil</option>
+              <option value="hi">Hindi</option>
+            </select>
+          </div>
+          <button class="btn" id="hearBtn">Listen 2.4 sec</button>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <div class="field">
+            <label for="voiceLanguage">Voice</label>
+            <select id="voiceLanguage">
+              <option value="en">English</option>
+              <option value="ta">Tamil</option>
+              <option value="hi">Hindi</option>
+            </select>
+          </div>
+          <div class="field" style="flex-basis:300px">
+            <label for="voiceText">What Gini should say</label>
+            <input id="voiceText" value="Hello. I am ready to learn with you." maxlength="220">
+          </div>
+          <button class="btn primary" id="voiceBtn">Speak</button>
+        </div>
+      </article>
+
+      <article class="panel vision">
+        <h2>Vision</h2>
+        <p class="sub">
+          Face vision is testable now. Autonomous tracking stays locked until one-pulse error comparison is verified.
+        </p>
+        <div class="button-grid">
+          <button class="btn" id="visionDoctor">Vision doctor</button>
+          <button class="btn" id="visionDry">Face dry-run · 9 sec</button>
+          <button class="btn" disabled title="Not physically verified yet">Auto tracking locked</button>
+        </div>
+        <div class="note">
+          Book/page teaching is the next vision layer: clear frame → page quality → content understanding → teaching plan.
+          It is not marked ready until real pages are physically verified.
+        </div>
+      </article>
+
+      <article class="panel assistant">
+        <h2>Full live assistant</h2>
+        <p class="sub">Wake word, hearing, brain, native movement and camera-speaker reply in one continuous test.</p>
+        <div class="row">
+          <button class="btn good" id="assistantStart">Start live Gini</button>
+          <button class="btn bad" id="assistantStop">Stop</button>
+        </div>
+        <div class="note">
+          Say “Gini, teach me English” to test Teacher routing. If microphone recovery fails after talkback,
+          the live logs below show the exact reconnect stage.
+        </div>
+      </article>
+
+      <article class="panel logs">
+        <div class="row" style="justify-content:space-between;margin-bottom:10px">
+          <div>
+            <h2>Live event log</h2>
+            <p class="sub" style="margin-bottom:0">One place to see SDK, Teacher, hearing, voice and expression output.</p>
+          </div>
+          <button class="btn" id="clearLogs">Clear</button>
+        </div>
+        <div class="logs-box" id="logs" aria-live="polite"></div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const $ = selector => document.querySelector(selector);
+    const $$ = selector => Array.from(document.querySelectorAll(selector));
+    const logs = $("#logs");
+
+    function line(text, level = "info") {
+      const div = document.createElement("div");
+      div.className = "log-" + level;
+      div.textContent = text;
+      logs.appendChild(div);
+      logs.scrollTop = logs.scrollHeight;
+    }
+
+    async function api(path, body = null) {
+      const response = await fetch(path, {
+        method: body == null ? "GET" : "POST",
+        headers: body == null ? {} : { "Content-Type": "application/json" },
+        body: body == null ? null : JSON.stringify(body)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || ("HTTP " + response.status));
+      }
+
+      return data;
+    }
+
+    function setHealth(id, result) {
+      const node = $(id);
+      const dot = node.querySelector(".dot");
+      dot.className = "dot " + (result && result.ok ? "ok" : "bad");
+      node.lastChild.textContent = result && result.ok ? " Ready" : " Not ready";
+    }
+
+    function taskLabel(task) {
+      return task ? task.label + " · PID " + task.pid : "Idle";
+    }
+
+    async function refreshStatus() {
+      try {
+        const status = await api("/api/status");
+        setHealth("#cameraStatus", status.camera);
+        setHealth("#visionStatus", status.visionRtsp);
+        setHealth("#rebuildoStatus", status.rebuildo);
+        setHealth("#ollamaStatus", status.ollama);
+        $("#taskText").textContent = taskLabel(status.task);
+      } catch (error) {
+        line("STATUS ERROR: " + error.message, "error");
+      }
+    }
+
+    async function run(path, body, labelText) {
+      try {
+        const result = await api(path, body);
+        line("STARTED: " + (labelText || (result.task && result.task.label) || path));
+        await refreshStatus();
+      } catch (error) {
+        line("ERROR: " + error.message, "error");
+      }
+    }
+
+    $$(".expr").forEach(button => {
+      button.addEventListener("click", () => {
+        run("/api/expression", { name: button.dataset.name }, "expression " + button.dataset.name);
+      });
+    });
+
+    $$(".behavior").forEach(button => {
+      button.addEventListener("click", () => {
+        run(
+          "/api/behavior",
+          {
+            name: button.dataset.name,
+            language: $("#behaviorLanguage").value
+          },
+          "behavior " + button.dataset.name
+        );
+      });
+    });
+
+    $("#teacherStart").addEventListener("click", () => {
+      run(
+        "/api/teacher",
+        {
+          language: $("#teacherLanguage").value,
+          mode: $("#teacherMode").value
+        },
+        "Teacher"
+      );
+    });
+
+    $("#hearBtn").addEventListener("click", () => {
+      run(
+        "/api/hearing",
+        {
+          language: $("#hearLanguage").value,
+          seconds: 2.4
+        },
+        "hearing test"
+      );
+    });
+
+    $("#voiceBtn").addEventListener("click", () => {
+      run(
+        "/api/voice",
+        {
+          language: $("#voiceLanguage").value,
+          text: $("#voiceText").value
+        },
+        "voice test"
+      );
+    });
+
+    $("#visionDoctor").addEventListener("click", () => run("/api/vision/doctor", {}, "vision doctor"));
+    $("#visionDry").addEventListener("click", () => run("/api/vision/dry", {}, "vision dry-run"));
+    $("#assistantStart").addEventListener("click", () => run("/api/assistant/start", {}, "live assistant"));
+    $("#assistantStop").addEventListener("click", () => run("/api/stop", {}, "stop"));
+    $("#stopBtn").addEventListener("click", () => run("/api/stop", {}, "stop"));
+    $("#refreshBtn").addEventListener("click", refreshStatus);
+    $("#clearLogs").addEventListener("click", () => { logs.textContent = ""; });
+
+    const events = new EventSource("/api/events");
+
+    events.onmessage = event => {
+      let data;
+      try { data = JSON.parse(event.data); } catch { return; }
+
+      if (data.type === "hello") {
+        $("#taskText").textContent = taskLabel(data.task);
+
+        for (const item of data.logs || []) {
+          line(
+            "[" + item.label + "] " + item.line,
+            item.level || "info"
+          );
+        }
+        return;
+      }
+
+      if (data.type === "log") {
+        line(
+          "[" + data.label + "] " + data.line,
+          data.level || "info"
+        );
+        return;
+      }
+
+      if (data.type === "task") {
+        if (data.state === "started") {
+          $("#taskText").textContent = taskLabel(data.task);
+        } else {
+          $("#taskText").textContent = "Idle";
+          line(
+            "FINISHED: " + data.label + " · exit " + data.code,
+            data.code === 0 ? "info" : "warn"
+          );
+        }
+
+        refreshStatus();
+      }
+    };
+
+    events.onerror = () => {
+      line("Event stream reconnecting…", "warn");
+    };
+
+    refreshStatus();
+    setInterval(refreshStatus, 5000);
+  </script>
+</body>
+</html>
