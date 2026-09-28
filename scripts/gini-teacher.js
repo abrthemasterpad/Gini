@@ -200,7 +200,7 @@ function verifyPronunciation(result, targetData) {
   }
 
   return {
-    state: "retry",
+    state: "uncertain",
     transcript
   };
 }
@@ -251,7 +251,7 @@ async function practiceLanguage(language, labelTamil, targetData, leadTamil = ""
   const retryText =
     check.state === "not-heard"
       ? "உன் குரல் கேட்கவில்லை. இன்னொரு முறை."
-      : "கிட்டத்தட்ட. இன்னொரு முறை கேட்டு சொல்லிப் பார்.";
+      : "சரியாக உறுதி செய்ய முடியவில்லை. இன்னொரு முறை கேட்டு சொல்லிப் பார்.";
 
   await Voice.speakSequence(
     [
@@ -361,7 +361,9 @@ async function status() {
   );
   console.log(
     "Pronunciation verification:",
-    listening.ok ? "READY - target constrained" : "NOT READY"
+    listening.ok
+      ? "EXPERIMENTAL - expected-word recognition gate"
+      : "NOT READY"
   );
   console.log(
     "Turn window:",
@@ -391,6 +393,7 @@ async function status() {
   console.log("  Japanese target voice is slower and louder.");
   console.log("  Japanese 'いえ' is extra slow/loud for clarity.");
   console.log("  No numeric pronunciation score.");
+  console.log("  A transcript mismatch is treated as UNCERTAIN, not as proof of bad pronunciation.");
   console.log("");
   console.log("Commands:");
   console.log("  node .\\scripts\\gini-teacher.js demo");
