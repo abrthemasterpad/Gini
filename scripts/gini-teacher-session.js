@@ -38,7 +38,7 @@ function tamilSegment(text) {
 
 function targetSegment(language, target) {
   return {
-    language: language.id,
+    language: language.ttsLanguage || language.id,
     voice: language.voice,
     delivery: language.delivery,
     preset: "storyteller",
