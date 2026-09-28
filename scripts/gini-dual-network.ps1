@@ -24,10 +24,21 @@ $cameraIf = Get-NetIPInterface -AddressFamily IPv4 -InterfaceIndex $cameraAddres
 
 $internetRoute = Get-NetRoute -AddressFamily IPv4 -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue |
     Where-Object {
-        $_.InterfaceIndex -ne $cameraAddress.InterfaceIndex -and
-        $_.State -eq "Alive"
+        $_.InterfaceIndex -ne $cameraAddress.InterfaceIndex
     } |
-    Sort-Object RouteMetric, InterfaceMetric |
+    ForEach-Object {
+        $route = $_
+        $iface = Get-NetIPInterface -AddressFamily IPv4 -InterfaceIndex $route.InterfaceIndex -ErrorAction SilentlyContinue
+        if ($iface -and $iface.ConnectionState -eq "Connected") {
+            [PSCustomObject]@{
+                Route = $route
+                Interface = $iface
+                EffectiveMetric = [int]$route.RouteMetric + [int]$iface.InterfaceMetric
+            }
+        }
+    } |
+    Where-Object { $_ } |
+    Sort-Object EffectiveMetric |
     Select-Object -First 1
 
 Write-Host "Camera interface" -ForegroundColor Yellow
@@ -48,12 +59,14 @@ if (-not $internetRoute) {
     exit 2
 }
 
-$internetIf = Get-NetIPInterface -AddressFamily IPv4 -InterfaceIndex $internetRoute.InterfaceIndex
+$internetIf = $internetRoute.Interface
+$internetRouteRecord = $internetRoute.Route
 
 Write-Host "Internet interface" -ForegroundColor Green
 Write-Host "  Name : $($internetIf.InterfaceAlias)"
 Write-Host "  Metric: $($internetIf.InterfaceMetric)"
-Write-Host "  Gateway route metric: $($internetRoute.RouteMetric)"
+Write-Host "  Gateway route metric: $($internetRouteRecord.RouteMetric)"
+Write-Host "  Effective metric: $($internetRoute.EffectiveMetric)"
 Write-Host ""
 
 if ($Apply) {
