@@ -572,36 +572,63 @@ async function restartListeningConnection() {
   audioFrames = [];
   firstBufferedAt = 0;
 
-  const audioBefore = totalAudioFrames;
-
   console.log("Opening a fresh microphone stream after talkback...");
 
-  connection = null;
-  opened = false;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const audioBefore = totalAudioFrames;
 
-  await sleep(700);
+    connection = null;
+    opened = false;
 
-  connectCamera();
-
-  const deadline = Date.now() + 12000;
-
-  while (Date.now() < deadline) {
-    if (opened && totalAudioFrames > audioBefore) {
-      reconnectingAfterTalkback = false;
-      suppressAudio = false;
-      audioFrames = [];
-      firstBufferedAt = 0;
-
-      console.log("MICROPHONE RESUMED - listening again.");
-      return true;
+    if (attempt > 1) {
+      console.log("Microphone recovery retry " + attempt + "/3...");
     }
 
-    await sleep(200);
+    await sleep(attempt === 1 ? 1200 : 1800);
+
+    connectCamera();
+
+    const deadline = Date.now() + 10000;
+
+    while (Date.now() < deadline) {
+      if (opened && totalAudioFrames > audioBefore) {
+        reconnectingAfterTalkback = false;
+        suppressAudio = false;
+        audioFrames = [];
+        firstBufferedAt = 0;
+
+        console.log("MICROPHONE RESUMED - listening again.");
+        return true;
+      }
+
+      await sleep(200);
+    }
+
+    console.warn(
+      "Stream reopened but no microphone audio arrived on attempt " +
+      attempt +
+      ". Resetting the session."
+    );
+
+    try {
+      if (connection && opened) {
+        API.close_stream(connection, 0, STREAM);
+      }
+    } catch {}
+
+    await sleep(300);
+
+    try {
+      Player.DisConnectDevice("", IP);
+    } catch {}
+
+    connection = null;
+    opened = false;
   }
 
   reconnectingAfterTalkback = false;
 
-  console.error("Microphone did not resume on the fresh post-talkback stream.");
+  console.error("Microphone did not resume after three recovery attempts.");
   return false;
 }
 
@@ -835,6 +862,28 @@ API.onloginresult = function (conn, result) {
 
   connection = conn;
   conn.logined = true;
+
+  if (reconnectingAfterTalkback) {
+    console.log("Clearing stale talkback state before reopening microphone...");
+
+    try {
+      Player.CallHangup("", IP, 0);
+    } catch {}
+
+    setTimeout(() => {
+      if (
+        reconnectingAfterTalkback &&
+        connection === conn &&
+        !opened
+      ) {
+        console.log("Opening live stream after talkback-state reset...");
+        API.open_stream(conn, 0, STREAM);
+      }
+    }, 900);
+
+    return;
+  }
+
   API.open_stream(conn, 0, STREAM);
 };
 
