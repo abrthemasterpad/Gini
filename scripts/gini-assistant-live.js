@@ -701,6 +701,16 @@ async function processBufferedAudio() {
       const followup = stripWakeAliases(normalizeText(result.text));
 
       if (followup) {
+        const teacherFollowup = parseTeacherIntent(followup);
+
+        if (teacherFollowup.matched) {
+          console.log("FOLLOW-UP -> TEACHER:", teacherFollowup.language);
+          awaitingCommandUntil = 0;
+          await performTeacherSession(teacherFollowup.language);
+          processing = false;
+          return;
+        }
+
         const parsedFollowup = parseCommand(followup);
 
         if (parsedFollowup.known) {
@@ -747,6 +757,15 @@ async function processBufferedAudio() {
   if (!wake.command) {
     awaitingCommandUntil = Date.now() + 8000;
     console.log("Wake word heard - waiting up to 8 seconds for the command...");
+    processing = false;
+    return;
+  }
+
+  const teacherWake = parseTeacherIntent(wake.command);
+
+  if (teacherWake.matched) {
+    console.log("WAKE -> TEACHER:", teacherWake.language);
+    await performTeacherSession(teacherWake.language);
     processing = false;
     return;
   }
