@@ -13,7 +13,15 @@ const REBUILDO_URL = String(
 ).replace(/\/$/, "");
 const REBUILDO_TOKEN = process.env.GINI_REBUILDO_TOKEN || "";
 const FFMPEG = process.env.GINI_FFMPEG || "ffmpeg.exe";
-const TALKBACK = path.join(ROOT, "src", "audio", "talkback.js");
+
+// Gini already has a physically verified camera-speaker path at ROOT\gini-say.js.
+// Keep the newer modular talkback path available for future use, but do not
+// require it for Teacher v0.1.
+const MODERN_TALKBACK = process.env.GINI_TALKBACK_SCRIPT
+  ? path.resolve(process.env.GINI_TALKBACK_SCRIPT)
+  : path.join(ROOT, "src", "audio", "talkback.js");
+const VERIFIED_TALKBACK = path.join(ROOT, "gini-say.js");
+const VERIFIED_TALKBACK_WAV = path.join(ROOT, "gini-clean.wav");
 
 fs.mkdirSync(RUNTIME, { recursive: true });
 
@@ -27,6 +35,31 @@ function headers(extra = {}) {
     ...(REBUILDO_TOKEN
       ? { Authorization: "Bearer " + REBUILDO_TOKEN }
       : {})
+  };
+}
+
+function talkbackStatus() {
+  if (fs.existsSync(VERIFIED_TALKBACK)) {
+    return {
+      ok: true,
+      mode: "verified-gini-say",
+      path: VERIFIED_TALKBACK
+    };
+  }
+
+  if (fs.existsSync(MODERN_TALKBACK)) {
+    return {
+      ok: true,
+      mode: "modular-talkback",
+      path: MODERN_TALKBACK
+    };
+  }
+
+  return {
+    ok: false,
+    mode: "missing",
+    path: VERIFIED_TALKBACK,
+    alsoChecked: MODERN_TALKBACK
   };
 }
 
@@ -207,26 +240,79 @@ async function convertForCamera(source) {
   return target;
 }
 
-async function playCameraWav(wavPath) {
-  if (!fs.existsSync(TALKBACK)) {
-    throw new Error("Missing Gini talkback runtime: " + TALKBACK);
-  }
-
-  const result = await runProcess(
-    "node.exe",
-    [TALKBACK],
-    {
-      inherit: true,
-      env: {
-        ...process.env,
-        GINI_WAV_PATH: wavPath
-      }
-    }
+async function playVerifiedGiniSay(wavPath) {
+  const backup = path.join(
+    RUNTIME,
+    "gini-clean-backup-" + process.pid + "-" + Date.now() + ".wav"
   );
+  const hadExisting = fs.existsSync(VERIFIED_TALKBACK_WAV);
 
-  if (result.code !== 0) {
-    throw new Error("Gini camera talkback exited with code " + result.code);
+  try {
+    if (hadExisting) {
+      fs.copyFileSync(VERIFIED_TALKBACK_WAV, backup);
+    }
+
+    // gini-say.js is the already verified native ESee camera-speaker runtime.
+    // It reads ROOT\gini-clean.wav, so feed the Rebuildo-generated 16 kHz
+    // mono PCM WAV into that exact proven path instead of creating a new stack.
+    fs.copyFileSync(wavPath, VERIFIED_TALKBACK_WAV);
+
+    const result = await runProcess(
+      "node.exe",
+      [VERIFIED_TALKBACK],
+      {
+        inherit: true,
+        cwd: ROOT
+      }
+    );
+
+    if (result.code !== 0) {
+      throw new Error("Verified Gini talkback exited with code " + result.code);
+    }
+  } finally {
+    try { fs.unlinkSync(VERIFIED_TALKBACK_WAV); } catch {}
+
+    if (hadExisting && fs.existsSync(backup)) {
+      try { fs.copyFileSync(backup, VERIFIED_TALKBACK_WAV); } catch {}
+    }
+
+    try { fs.unlinkSync(backup); } catch {}
   }
+}
+
+async function playCameraWav(wavPath) {
+  // Prefer the path that has already been physically verified on this camera.
+  if (fs.existsSync(VERIFIED_TALKBACK)) {
+    await playVerifiedGiniSay(wavPath);
+    return;
+  }
+
+  // Future modular runtime fallback.
+  if (fs.existsSync(MODERN_TALKBACK)) {
+    const result = await runProcess(
+      "node.exe",
+      [MODERN_TALKBACK],
+      {
+        inherit: true,
+        env: {
+          ...process.env,
+          GINI_WAV_PATH: wavPath
+        }
+      }
+    );
+
+    if (result.code !== 0) {
+      throw new Error("Gini camera talkback exited with code " + result.code);
+    }
+    return;
+  }
+
+  throw new Error(
+    "Missing Gini talkback runtime. Checked verified path " +
+    VERIFIED_TALKBACK +
+    " and modular path " +
+    MODERN_TALKBACK
+  );
 }
 
 async function speak(options) {
@@ -254,6 +340,7 @@ module.exports = {
   synthesizeWav,
   convertForCamera,
   playCameraWav,
+  talkbackStatus,
   speak,
   config: {
     rebuildoUrl: REBUILDO_URL
