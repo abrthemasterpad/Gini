@@ -228,7 +228,7 @@ async function convertForCamera(source) {
     "-loglevel", "error",
     "-i", source,
     "-ac", "1",
-    "-ar", "16000",
+    "-ar", String(outputRate),
     "-c:a", "pcm_s16le",
     target
   ]);
@@ -356,6 +356,10 @@ async function playCameraWav(wavPath) {
 
 
 async function combineSequenceWavs(sources, pauseMs = 180, gainDb = []) {
+  const outputRate =
+    SPEAKER_MODE === "pc" || SPEAKER_MODE === "bluetooth"
+      ? 48000
+      : 16000;
   if (!Array.isArray(sources) || sources.length === 0) {
     throw new Error("No audio sources supplied for teacher sequence");
   }
@@ -391,7 +395,7 @@ async function combineSequenceWavs(sources, pauseMs = 180, gainDb = []) {
 
     filters.push(
       "[" + index + ":a]" +
-      "aresample=16000," +
+      "aresample=" + outputRate + "," +
       "aformat=sample_fmts=s16:channel_layouts=mono" +
       gainFilter +
       "[a" + index + "]"
@@ -401,7 +405,7 @@ async function combineSequenceWavs(sources, pauseMs = 180, gainDb = []) {
 
     if (index < sources.length - 1 && pauseSeconds > 0) {
       filters.push(
-        "anullsrc=r=16000:cl=mono:d=" +
+        "anullsrc=r=" + outputRate + ":cl=mono:d=" +
         pauseSeconds.toFixed(3) +
         "[s" + index + "]"
       );
@@ -479,8 +483,12 @@ async function speak(options) {
   let cameraWav = null;
 
   try {
-    cameraWav = await convertForCamera(generated.source);
-    await playOutputWav(cameraWav);
+    if (SPEAKER_MODE === "pc" || SPEAKER_MODE === "bluetooth") {
+      await playOutputWav(generated.source);
+    } else {
+      cameraWav = await convertForCamera(generated.source);
+      await playOutputWav(cameraWav);
+    }
 
     return generated.job;
   } finally {
