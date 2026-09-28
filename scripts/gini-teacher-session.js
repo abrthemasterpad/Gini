@@ -137,6 +137,16 @@ async function speakSoftTamil(text) {
   await Voice.speak(tamilSegment(text));
 }
 
+async function feedback(text, expression = "acknowledge") {
+  await speakSoftTamil(text);
+
+  try {
+    await Expression.runExpression(expression);
+  } catch (error) {
+    console.log("Gini [EXPRESSION SKIPPED]:", error.message);
+  }
+}
+
 async function teachOne(language, item, index) {
   const target = item[language.id];
 
