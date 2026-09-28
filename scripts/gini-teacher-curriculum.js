@@ -50,6 +50,7 @@ const LANGUAGES = {
   },
   en: {
     id: "en",
+    ttsLanguage: "en-us",
     name: "English",
     tamilName: "ஆங்கிலம்",
     voice: "af_heart",
