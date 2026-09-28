@@ -79,6 +79,18 @@ async function status() {
   console.log("=".repeat(58));
   console.log("Rebuildo:", Voice.config.rebuildoUrl);
 
+  const talkback = Voice.talkbackStatus();
+  if (talkback.ok) {
+    console.log("Camera talkback: READY (" + talkback.mode + ")");
+    console.log("Talkback runtime:", talkback.path);
+  } else {
+    console.log("Camera talkback: NOT READY");
+    console.log("Expected verified runtime:", talkback.path);
+    if (talkback.alsoChecked) {
+      console.log("Also checked:", talkback.alsoChecked);
+    }
+  }
+
   const health = await Voice.health();
 
   if (!health.ok) {
