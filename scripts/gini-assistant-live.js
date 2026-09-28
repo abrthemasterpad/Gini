@@ -379,6 +379,38 @@ async function speakReply(reply, sleepAfter = false) {
   console.log("Listening continues.");
 }
 
+async function performTeacherSession(language) {
+  const labels = { en: "English", hi: "Hindi", ta: "Tamil" };
+
+  suppressAudio = true;
+  audioFrames = [];
+  firstBufferedAt = 0;
+  awaitingCommandUntil = 0;
+
+  console.log("TEACHER MODE:", labels[language] || language);
+
+  await pauseListeningBeforeTalkback();
+
+  const result = await run(
+    "node.exe",
+    [TEACHER_SESSION, language, "lesson"],
+    { inherit: true }
+  );
+
+  if (result.code !== 0) {
+    console.error("Teacher session exited with code:", result.code);
+  }
+
+  const resumed = await restartListeningConnection();
+
+  if (!resumed) {
+    shutdown("microphone failed to resume after teacher session");
+    return;
+  }
+
+  console.log("Teacher session ended - Gini assistant is listening again.");
+}
+
 async function performAIRequest(text) {
   if (!AI_ENABLED) {
     console.log("AI assistant disabled -> keep listening");
