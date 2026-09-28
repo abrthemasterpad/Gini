@@ -225,6 +225,11 @@ async function listenOnce({
     "-t", "4",
     "--no-gpu",
     "--no-timestamps",
+    "--no-fallback",
+    "--temperature", "0",
+    "--beam-size", "5",
+    "--max-len", "32",
+    "--suppress-nst",
     "--output-txt",
     "--output-file", TRANSCRIPT_BASE,
     "--no-prints"
