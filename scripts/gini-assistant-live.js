@@ -42,6 +42,7 @@ const SAY_CAMERA = path.join(ROOT, "gini-say.ps1");
 const SAY_LOCAL = path.join(ROOT, "scripts", "gini-say-local.ps1");
 const SPEAKER_MODE = (process.env.GINI_SPEAKER_MODE || "camera").toLowerCase();
 const SAY = SPEAKER_MODE === "local" ? SAY_LOCAL : SAY_CAMERA;
+const TEACHER_SESSION = path.join(ROOT, "scripts", "gini-teacher-session.js");
 
 const AAC = path.join(RUNTIME, "gini-direct-window.aac");
 const WAV = path.join(RUNTIME, "gini-direct-window.wav");
