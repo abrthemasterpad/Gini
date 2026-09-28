@@ -315,6 +315,119 @@ async function playCameraWav(wavPath) {
   );
 }
 
+
+async function combineSequenceWavs(sources, pauseMs = 180) {
+  if (!Array.isArray(sources) || sources.length === 0) {
+    throw new Error("No audio sources supplied for teacher sequence");
+  }
+
+  if (sources.length === 1) {
+    return convertForCamera(sources[0]);
+  }
+
+  const target = path.join(
+    RUNTIME,
+    "teacher-sequence-" + process.pid + "-" + Date.now() + ".wav"
+  );
+
+  const args = [
+    "-y",
+    "-hide_banner",
+    "-loglevel", "error"
+  ];
+
+  for (const source of sources) {
+    args.push("-i", source);
+  }
+
+  const filters = [];
+  const concatInputs = [];
+  const pauseSeconds = Math.max(0, Number(pauseMs || 0)) / 1000;
+
+  sources.forEach((source, index) => {
+    filters.push(
+      "[" + index + ":a]" +
+      "aresample=16000," +
+      "aformat=sample_fmts=s16:channel_layouts=mono" +
+      "[a" + index + "]"
+    );
+
+    concatInputs.push("[a" + index + "]");
+
+    if (index < sources.length - 1 && pauseSeconds > 0) {
+      filters.push(
+        "anullsrc=r=16000:cl=mono:d=" +
+        pauseSeconds.toFixed(3) +
+        "[s" + index + "]"
+      );
+      concatInputs.push("[s" + index + "]");
+    }
+  });
+
+  filters.push(
+    concatInputs.join("") +
+    "concat=n=" + concatInputs.length + ":v=0:a=1[out]"
+  );
+
+  args.push(
+    "-filter_complex", filters.join(";"),
+    "-map", "[out]",
+    "-ac", "1",
+    "-ar", "16000",
+    "-c:a", "pcm_s16le",
+    target
+  );
+
+  const result = await runProcess(FFMPEG, args);
+
+  if (result.code !== 0 || !fs.existsSync(target)) {
+    throw new Error(
+      "FFmpeg could not build teacher speech sequence: " +
+      (result.stderr || result.stdout || "unknown error").trim()
+    );
+  }
+
+  return target;
+}
+
+async function speakSequence(segments, options = {}) {
+  if (!Array.isArray(segments) || segments.length === 0) {
+    throw new Error("Teacher speech sequence is empty");
+  }
+
+  const generated = [];
+  let cameraWav = null;
+
+  try {
+    // Rebuildo already serializes voice jobs safely. Submit them together so
+    // its warm workers can prepare a complete teacher turn before Gini speaks.
+    const results = await Promise.all(
+      segments.map(segment => synthesizeWav(segment))
+    );
+
+    generated.push(...results);
+    cameraWav = await combineSequenceWavs(
+      generated.map(item => item.source),
+      options.pauseMs == null ? 180 : options.pauseMs
+    );
+
+    await playCameraWav(cameraWav);
+
+    return generated.map(item => item.job);
+  } finally {
+    if (process.env.GINI_PRIVACY_MODE !== "0") {
+      for (const item of generated) {
+        if (!item || !item.source) continue;
+        try { fs.unlinkSync(item.source); } catch {}
+      }
+
+      if (cameraWav) {
+        try { fs.unlinkSync(cameraWav); } catch {}
+      }
+    }
+  }
+}
+
 async function speak(options) {
   const generated = await synthesizeWav(options);
   let cameraWav = null;
@@ -341,6 +454,7 @@ module.exports = {
   convertForCamera,
   playCameraWav,
   talkbackStatus,
+  speakSequence,
   speak,
   config: {
     rebuildoUrl: REBUILDO_URL
