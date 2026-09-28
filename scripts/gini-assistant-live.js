@@ -254,6 +254,24 @@ function parseCommand(command) {
   };
 }
 
+function parseTeacherIntent(command) {
+  const clean = stripWakeAliases(normalizeText(command));
+
+  if (/\b(?:teach me english|teach english|learn english|english class|start english)\b/i.test(clean)) {
+    return { matched: true, language: "en", clean };
+  }
+
+  if (/\b(?:teach me hindi|teach hindi|learn hindi|hindi class|start hindi)\b/i.test(clean)) {
+    return { matched: true, language: "hi", clean };
+  }
+
+  if (/\b(?:teach me tamil|teach tamil|learn tamil|tamil class|start tamil)\b/i.test(clean)) {
+    return { matched: true, language: "ta", clean };
+  }
+
+  return { matched: false, language: "", clean };
+}
+
 function cleanupTransientAudio() {
   if (!PRIVACY_MODE) return;
 
