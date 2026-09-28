@@ -9,34 +9,34 @@ const LESSONS = {
     introTamil: "சரி. இன்று ஹிந்தியில் ஐந்து எளிய வார்த்தைகள் கற்போம்.",
     items: [
       {
-        target: "नमस्ते",
-        roman: "namaste",
-        meaningTamil: "வணக்கம்",
-        promptTamil: "முதல் வார்த்தை. இதன் அர்த்தம் வணக்கம். முதலில் கவனமாக கேள்."
-      },
-      {
-        target: "धन्यवाद",
-        roman: "dhanyavaad",
-        meaningTamil: "நன்றி",
-        promptTamil: "அடுத்த வார்த்தையின் அர்த்தம் நன்றி. முதலில் கவனமாக கேள்."
-      },
-      {
         target: "पानी",
         roman: "paani",
         meaningTamil: "தண்ணீர்",
-        promptTamil: "இந்த வார்த்தையின் அர்த்தம் தண்ணீர். முதலில் கவனமாக கேள்."
+        promptTamil: "முதல் வார்த்தை. இதன் அர்த்தம் தண்ணீர்."
       },
       {
-        target: "अच्छा",
-        roman: "achchha",
-        meaningTamil: "நல்லது அல்லது சரி",
-        promptTamil: "இந்த வார்த்தையின் அர்த்தம் நல்லது அல்லது சரி. முதலில் கவனமாக கேள்."
+        target: "किताब",
+        roman: "kitaab",
+        meaningTamil: "புத்தகம்",
+        promptTamil: "அடுத்த வார்த்தையின் அர்த்தம் புத்தகம்."
       },
       {
-        target: "फिर मिलेंगे",
-        roman: "phir milenge",
-        meaningTamil: "மீண்டும் சந்திப்போம்",
-        promptTamil: "கடைசி வார்த்தையின் அர்த்தம் மீண்டும் சந்திப்போம். முதலில் கவனமாக கேள்."
+        target: "घर",
+        roman: "ghar",
+        meaningTamil: "வீடு",
+        promptTamil: "இந்த வார்த்தையின் அர்த்தம் வீடு."
+      },
+      {
+        target: "बिल्ली",
+        roman: "billi",
+        meaningTamil: "பூனை",
+        promptTamil: "இந்த வார்த்தையின் அர்த்தம் பூனை."
+      },
+      {
+        target: "सेब",
+        roman: "seb",
+        meaningTamil: "ஆப்பிள்",
+        promptTamil: "கடைசி வார்த்தையின் அர்த்தம் ஆப்பிள்."
       }
     ],
     outroTamil: "சூப்பர். இன்று ஐந்து ஹிந்தி வார்த்தைகள் முடிந்தது."
@@ -50,34 +50,34 @@ const LESSONS = {
     introTamil: "சரி. இன்று ஜப்பானிய மொழியில் ஐந்து எளிய வார்த்தைகள் கற்போம்.",
     items: [
       {
-        target: "こんにちは",
-        roman: "konnichiwa",
-        meaningTamil: "வணக்கம்",
-        promptTamil: "முதல் வார்த்தை. இதன் அர்த்தம் வணக்கம். முதலில் கவனமாக கேள்."
+        target: "みず",
+        roman: "mizu",
+        meaningTamil: "தண்ணீர்",
+        promptTamil: "முதல் வார்த்தை. இதன் அர்த்தம் தண்ணீர்."
       },
       {
-        target: "ありがとう",
-        roman: "arigatou",
-        meaningTamil: "நன்றி",
-        promptTamil: "இந்த வார்த்தையின் அர்த்தம் நன்றி. முதலில் கவனமாக கேள்."
+        target: "ほん",
+        roman: "hon",
+        meaningTamil: "புத்தகம்",
+        promptTamil: "அடுத்த வார்த்தையின் அர்த்தம் புத்தகம்."
       },
       {
-        target: "はい",
-        roman: "hai",
-        meaningTamil: "ஆம்",
-        promptTamil: "இந்த வார்த்தையின் அர்த்தம் ஆம். முதலில் கவனமாக கேள்."
+        target: "いえ",
+        roman: "ie",
+        meaningTamil: "வீடு",
+        promptTamil: "இந்த வார்த்தையின் அர்த்தம் வீடு."
       },
       {
-        target: "いいえ",
-        roman: "iie",
-        meaningTamil: "இல்லை",
-        promptTamil: "இந்த வார்த்தையின் அர்த்தம் இல்லை. முதலில் கவனமாக கேள்."
+        target: "ねこ",
+        roman: "neko",
+        meaningTamil: "பூனை",
+        promptTamil: "இந்த வார்த்தையின் அர்த்தம் பூனை."
       },
       {
-        target: "またね",
-        roman: "mata ne",
-        meaningTamil: "மீண்டும் பார்க்கலாம்",
-        promptTamil: "கடைசி வார்த்தையின் அர்த்தம் மீண்டும் பார்க்கலாம். முதலில் கவனமாக கேள்."
+        target: "りんご",
+        roman: "ringo",
+        meaningTamil: "ஆப்பிள்",
+        promptTamil: "கடைசி வார்த்தையின் அர்த்தம் ஆப்பிள்."
       }
     ],
     outroTamil: "சூப்பர். இன்று ஐந்து ஜப்பானிய வார்த்தைகள் முடிந்தது."
