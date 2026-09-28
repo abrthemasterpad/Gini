@@ -10,32 +10,24 @@ const TAMIL_VOICE = process.env.GINI_TEACHER_TAMIL_VOICE || "female";
 const TARGET_DELIVERY = process.env.GINI_TEACHER_TARGET_DELIVERY || "clear";
 const TAMIL_DELIVERY = process.env.GINI_TEACHER_TAMIL_DELIVERY || "natural";
 const CHILD_LISTEN_SECONDS = Number(
-  process.env.GINI_TEACHER_LISTEN_SECONDS || 2.6
+  process.env.GINI_TEACHER_LISTEN_SECONDS || 2.4
 );
-const TRANSCRIBE_CHILD = process.env.GINI_TEACHER_TRANSCRIBE === "1";
 
 function usage() {
   console.log("");
-  console.log("Gini Teacher v0.3 - natural hands-free lesson");
+  console.log("Gini Teacher v0.4 - multilingual concept teaching");
   console.log("");
   console.log("Commands:");
   console.log("  node .\\scripts\\gini-teacher.js status");
-  console.log("  node .\\scripts\\gini-teacher.js demo hi");
-  console.log("  node .\\scripts\\gini-teacher.js demo ja");
-  console.log("  node .\\scripts\\gini-teacher.js lesson hi");
-  console.log("  node .\\scripts\\gini-teacher.js lesson ja");
+  console.log("  node .\\scripts\\gini-teacher.js demo");
+  console.log("  node .\\scripts\\gini-teacher.js lesson");
   console.log("");
-  console.log("demo = one word");
-  console.log("lesson = all 5 words");
-  console.log("No keyboard interaction is required during a lesson.");
+  console.log("demo   = one Tamil/Hindi/Japanese concept");
+  console.log("lesson = all five concepts");
   console.log("");
 }
 
-function tamilLanguageName(lesson) {
-  return lesson.id === "ja" ? "ஜப்பானிய" : "ஹிந்தி";
-}
-
-function tamilSegment(text) {
+function tamilSegment(text, extra = {}) {
   return {
     language: "ta",
     voice: TAMIL_VOICE,
@@ -43,19 +35,25 @@ function tamilSegment(text) {
     preset: "storyteller",
     speed: 0.98,
     mode: "standard",
-    text
+    gainDb: 0,
+    text,
+    ...extra
   };
 }
 
-function targetSegment(lesson, item) {
+function languageSegment(language, data, extra = {}) {
+  const isHindi = language === "hi";
+
   return {
-    language: lesson.language,
-    voice: lesson.voice,
+    language,
+    voice: isHindi ? "hf_alpha" : "jf_alpha",
     delivery: TARGET_DELIVERY,
     preset: "storyteller",
-    speed: 0.90,
+    speed: Number(data.speed || (isHindi ? 0.86 : 0.82)),
     mode: "standard",
-    text: item.target
+    gainDb: Number(data.gainDb || (isHindi ? 3 : 4)),
+    text: data.target,
+    ...extra
   };
 }
 
@@ -64,202 +62,308 @@ async function speakTamil(text) {
   return Voice.speak(tamilSegment(text));
 }
 
-async function speakTeachingTurn(lesson, item, index, leadTamil = "") {
+async function speakConceptOverview(concept, index, lead = "") {
   const first = index === 0;
-  const prompt = [
-    leadTamil,
-    first ? "முதல் வார்த்தை." : "அடுத்தது.",
-    "இதன் அர்த்தம் " + item.meaningTamil + "."
+  const tamilLead = [
+    lead,
+    first ? "முதல் பொருள்." : "அடுத்தது.",
+    concept.tamil + ".",
+    "ஹிந்தியில்"
   ].filter(Boolean).join(" ");
 
   console.log("");
+  console.log("[" + (index + 1) + "] " + concept.id.toUpperCase());
   console.log(
-    "[" + (index + 1) + "] " +
-    item.meaningTamil + " -> " + item.target + " / " + item.roman
-  );
-  console.log(
-    "Gini [Tamil -> " + lesson.name + "]:",
-    prompt,
-    "=>",
-    item.target
+    "Tamil:", concept.tamil,
+    "| Hindi:", concept.hindi.target, "/" + concept.hindi.roman,
+    "| Japanese:", concept.japanese.target, "/" + concept.japanese.roman
   );
 
   await Voice.speakSequence(
     [
-      tamilSegment(prompt),
-      targetSegment(lesson, item)
+      tamilSegment(tamilLead),
+      languageSegment("hi", concept.hindi),
+      tamilSegment("ஜப்பானியத்தில்"),
+      languageSegment("ja", concept.japanese)
     ],
-    { pauseMs: 180 }
+    { pauseMs: 190 }
   );
 }
 
-async function speakRetryTurn(lesson, item) {
+function normalizeText(text) {
+  return String(text || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\u200b-\u200d\ufeff]/g, "")
+    .replace(/[.,!?;:'"“”‘’()\[\]{}\-_/\\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function compactText(text) {
+  return normalizeText(text).replace(/\s+/g, "");
+}
+
+function isLatin(text) {
+  return /^[a-z]+$/i.test(String(text || ""));
+}
+
+function levenshtein(a, b) {
+  const x = String(a || "");
+  const y = String(b || "");
+  const rows = y.length + 1;
+  const cols = x.length + 1;
+  const d = Array.from({ length: rows }, () => Array(cols).fill(0));
+
+  for (let i = 0; i < rows; i++) d[i][0] = i;
+  for (let j = 0; j < cols; j++) d[0][j] = j;
+
+  for (let i = 1; i < rows; i++) {
+    for (let j = 1; j < cols; j++) {
+      const cost = y[i - 1] === x[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(
+        d[i - 1][j] + 1,
+        d[i][j - 1] + 1,
+        d[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return d[rows - 1][cols - 1];
+}
+
+function latinSimilarity(a, b) {
+  const x = compactText(a);
+  const y = compactText(b);
+
+  if (!isLatin(x) || !isLatin(y) || !x || !y) return 0;
+
+  const longest = Math.max(x.length, y.length);
+  if (!longest) return 1;
+
+  return 1 - (levenshtein(x, y) / longest);
+}
+
+function verifyPronunciation(result, targetData) {
+  if (!result || !(result.voiceDetected || result.heardAudio)) {
+    return {
+      state: "not-heard",
+      transcript: ""
+    };
+  }
+
+  const transcript = normalizeText(result.text);
+
+  if (!transcript) {
+    return {
+      state: "uncertain",
+      transcript: ""
+    };
+  }
+
+  const accepted = [
+    targetData.target,
+    targetData.roman,
+    ...(targetData.accept || [])
+  ];
+
+  const compactTranscript = compactText(transcript);
+
+  for (const item of accepted) {
+    const normalized = normalizeText(item);
+    const compact = compactText(item);
+
+    if (!compact) continue;
+
+    if (
+      compactTranscript === compact ||
+      compactTranscript.includes(compact) ||
+      compact.includes(compactTranscript)
+    ) {
+      return {
+        state: "pass",
+        transcript
+      };
+    }
+
+    if (latinSimilarity(compactTranscript, compact) >= 0.72) {
+      return {
+        state: "pass",
+        transcript
+      };
+    }
+  }
+
+  return {
+    state: "retry",
+    transcript
+  };
+}
+
+async function listenAndVerify(language, targetData) {
+  const heard = await Listen.listenOnce({
+    language,
+    seconds: CHILD_LISTEN_SECONDS,
+    transcribe: true
+  });
+
+  const check = verifyPronunciation(heard, targetData);
+
   console.log(
-    "Gini [retry -> " + lesson.name + "]:",
-    item.target
+    "Gini [VERIFY " + language.toUpperCase() + "]:",
+    check.state.toUpperCase(),
+    "| heard:",
+    check.transcript || "(no reliable transcript)"
   );
+
+  return check;
+}
+
+async function practiceLanguage(language, labelTamil, targetData, leadTamil = "") {
+  const intro = [
+    leadTamil,
+    labelTamil + ".",
+    "கவனமாக கேள்."
+  ].filter(Boolean).join(" ");
 
   await Voice.speakSequence(
     [
-      tamilSegment("கேட்கவில்லை. இன்னொரு முறை சொல்லிப் பார்."),
-      targetSegment(lesson, item)
+      tamilSegment(intro),
+      languageSegment(language, targetData)
+    ],
+    { pauseMs: 170 }
+  );
+
+  let check = await listenAndVerify(language, targetData);
+
+  if (check.state === "pass") {
+    return {
+      passed: true,
+      lead: "சூப்பர்."
+    };
+  }
+
+  const retryText =
+    check.state === "not-heard"
+      ? "உன் குரல் கேட்கவில்லை. இன்னொரு முறை."
+      : "கிட்டத்தட்ட. இன்னொரு முறை கேட்டு சொல்லிப் பார்.";
+
+  await Voice.speakSequence(
+    [
+      tamilSegment(retryText),
+      languageSegment(
+        language,
+        targetData,
+        {
+          speed: Math.max(0.68, Number(targetData.speed || 0.82) - 0.06),
+          gainDb: Number(targetData.gainDb || 4) + 1.0
+        }
+      )
     ],
     { pauseMs: 160 }
   );
-}
 
-function safeDb(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n.toFixed(1) + " dB" : "unknown dB";
-}
+  check = await listenAndVerify(language, targetData);
 
-function describeHeard(result) {
-  if (!result) return "none";
-
-  if (result.voiceDetected || result.heardAudio) {
-    if (result.text) {
-      console.log(
-        "Gini [HEARD CHILD]:",
-        result.text,
-        "|",
-        safeDb(result.maxDb)
-      );
-    } else {
-      console.log(
-        "Gini [CHILD VOICE]: detected |",
-        safeDb(result.maxDb)
-      );
-    }
-    return "voice";
+  if (check.state === "pass") {
+    return {
+      passed: true,
+      lead: "இப்போ சரி. சூப்பர்."
+    };
   }
 
-  console.log("Gini [NO CHILD VOICE DETECTED]");
-  return "none";
+  return {
+    passed: false,
+    lead: "நல்ல முயற்சி. இதை பின்னாடி மறுபடியும் practice பண்ணலாம்."
+  };
 }
 
-async function listenForChild(lesson) {
-  return Listen.listenOnce({
-    language: lesson.language,
-    seconds: CHILD_LISTEN_SECONDS,
-    transcribe: TRANSCRIBE_CHILD
-  });
+async function runConcept(concept, index, lead = "") {
+  await speakConceptOverview(concept, index, lead);
+
+  const hindi = await practiceLanguage(
+    "hi",
+    "முதலில் ஹிந்தி",
+    concept.hindi
+  );
+
+  const japanese = await practiceLanguage(
+    "ja",
+    "இப்போது ஜப்பானியம்",
+    concept.japanese,
+    hindi.lead
+  );
+
+  return japanese.lead;
 }
 
 async function status() {
-  console.log("=".repeat(64));
-  console.log("GINI TEACHER v0.3 - STATUS");
-  console.log("=".repeat(64));
+  console.log("=".repeat(68));
+  console.log("GINI TEACHER v0.4 - STATUS");
+  console.log("=".repeat(68));
   console.log("Rebuildo:", Voice.config.rebuildoUrl);
+  console.log("Speaker mode:", Voice.config.speakerMode);
 
   const talkback = Voice.talkbackStatus();
-
-  if (talkback.ok) {
-    console.log("Camera talkback: READY (" + talkback.mode + ")");
-    console.log("Talkback runtime:", talkback.path);
+  if (Voice.config.speakerMode === "camera") {
+    console.log(
+      "Camera talkback:",
+      talkback.ok ? "READY (" + talkback.mode + ")" : "NOT READY"
+    );
   } else {
-    console.log("Camera talkback: NOT READY");
-    console.log("Expected verified runtime:", talkback.path);
+    console.log("External Windows speaker mode: READY");
   }
 
   const listening = Listen.status();
-
   console.log(
-    "Hands-free child listening:",
+    "Camera child microphone:",
     listening.ok ? "READY" : "NOT READY"
   );
   console.log(
+    "Pronunciation verification:",
+    listening.ok ? "READY - target constrained" : "NOT READY"
+  );
+  console.log(
     "Turn window:",
-    (CHILD_LISTEN_SECONDS).toFixed(1) + "s",
+    CHILD_LISTEN_SECONDS.toFixed(1) + "s",
     "| threshold:",
     listening.speechThresholdDb + " dB"
   );
-  console.log(
-    "Child response mode:",
-    TRANSCRIBE_CHILD
-      ? "Whisper debug transcription + voice detection"
-      : "FAST voice-turn detection"
-  );
-  console.log("Pronunciation scoring: OFF");
-
-  if (!listening.ok) {
-    for (const missing of listening.missing) {
-      console.log("  missing:", missing);
-    }
-  }
 
   const health = await Voice.health();
 
-  if (!health.ok) {
-    console.log("Rebuildo voice server: NOT READY");
+  console.log(
+    "Rebuildo voice server:",
+    health.ok ? "READY" : "NOT READY"
+  );
+
+  if (health.ok) {
+    console.log("Tamil Voice Artist:", health.tamilVoiceArtist || "unknown");
+    console.log("Kokoro Voice Artist:", health.voiceArtist || "unknown");
+  } else {
     console.log("Reason:", health.error || "health check failed");
-    console.log("");
-    console.log("Start Rebuildo renderer first:");
-    console.log("  cd D:\\Rebuildo\\renderer");
-    console.log("  npm start");
-    process.exitCode = 2;
-    return;
-  }
-
-  console.log("Rebuildo voice server: READY");
-  console.log("Tamil Voice Artist:", health.tamilVoiceArtist || "unknown");
-  console.log("Kokoro Voice Artist:", health.voiceArtist || "unknown");
-
-  try {
-    const catalog = await Voice.catalog();
-    const languages = catalog.languages || {};
-
-    for (const code of ["ta", "hi", "ja"]) {
-      const item = languages[code];
-      console.log(
-        "  " + code + " " +
-        (item ? item.label : "unknown") +
-        ": " +
-        (item && item.ready ? "READY" : "NOT READY")
-      );
-    }
-  } catch (error) {
-    console.log("Language readiness check failed:", error.message);
   }
 
   console.log("");
-  console.log("Teacher lessons:");
-
-  for (const lesson of Lessons.listLessons()) {
-    console.log(
-      "  " + lesson.id + "  " + lesson.name + "  " +
-      lesson.items + " words - hands-free"
-    );
-  }
-
-  console.log("  ar  Arabic  planned - local voice not selected yet");
+  console.log("Teaching mode:");
+  console.log("  Tamil meaning -> Hindi -> Japanese -> verify Hindi -> verify Japanese");
+  console.log("  5 concepts: water, book, house, cat, apple");
+  console.log("  Japanese target voice is slower and louder.");
+  console.log("  Japanese 'いえ' is extra slow/loud for clarity.");
+  console.log("  No numeric pronunciation score.");
   console.log("");
-  console.log("Flow: Gini teaches -> child replies -> Gini hears voice -> next word");
-  console.log("No screen or ENTER key is required.");
+  console.log("Commands:");
+  console.log("  node .\\scripts\\gini-teacher.js demo");
+  console.log("  node .\\scripts\\gini-teacher.js lesson");
 }
 
-async function runLesson(languageId, maxItems = null, demo = false) {
-  const lesson = Lessons.getLesson(languageId);
-
-  if (!lesson) {
-    if (
-      String(languageId || "").toLowerCase() === "ar" ||
-      String(languageId || "").toLowerCase() === "arabic"
-    ) {
-      throw new Error(
-        "Arabic is not enabled yet. We will add it only after a local Arabic TTS engine passes the Gini/Rebuildo fit test."
-      );
-    }
-
-    throw new Error("Unknown lesson: " + languageId);
-  }
-
+async function runLesson(limit = null, demo = false) {
   const health = await Voice.health();
 
   if (!health.ok) {
     throw new Error(
       "Rebuildo voice server is not ready at " +
-      Voice.config.rebuildoUrl +
-      ". Start D:\\Rebuildo\\renderer with npm start."
+      Voice.config.rebuildoUrl
     );
   }
 
@@ -267,87 +371,50 @@ async function runLesson(languageId, maxItems = null, demo = false) {
 
   if (!listening.ok) {
     throw new Error(
-      "Hands-free child listening is not ready. Missing: " +
+      "Camera child microphone is not ready. Missing: " +
       listening.missing.join(", ")
     );
   }
 
-  const items = maxItems == null
-    ? lesson.items
-    : lesson.items.slice(0, Math.max(1, maxItems));
+  const concepts = Lessons.getConcepts(limit);
 
   console.log("");
-  console.log("=".repeat(64));
+  console.log("=".repeat(68));
   console.log(
-    "GINI TEACHER v0.3 - " +
-    lesson.name.toUpperCase() +
+    "GINI TEACHER v0.4 - TAMIL + HINDI + JAPANESE" +
     (demo ? " DEMO" : "")
   );
-  console.log("Natural flow: Gini speaks -> child replies -> Gini continues");
-  console.log("Keyboard / screen confirmation: NOT REQUIRED");
-  console.log("Pronunciation scoring: OFF");
-  console.log("=".repeat(64));
+  console.log("Concept based: all three languages are taught together");
+  console.log("Pronunciation verification: Hindi + Japanese");
+  console.log("No screen / ENTER key needed during the lesson");
+  console.log("=".repeat(68));
   console.log("");
 
-  if (demo) {
-    await speakTamil(
-      "சரி. ஒரு " + tamilLanguageName(lesson) +
-      " வார்த்தை மட்டும் பார்க்கலாம். நான் சொன்னதும் நீ திருப்பிச் சொல்லு."
-    );
-  } else {
-    await speakTamil(
-      "சரி. இன்று " + tamilLanguageName(lesson) +
-      " மொழியில் ஐந்து வார்த்தைகள் கற்போம். நான் சொன்னதும் நீ திருப்பிச் சொல்லு."
-    );
+  await speakTamil(
+    demo
+      ? "சரி. ஒரு பொருளை தமிழ், ஹிந்தி, ஜப்பானியம் மூன்றிலும் பார்க்கலாம்."
+      : "சரி. இன்று ஐந்து பொருட்களை தமிழ், ஹிந்தி, ஜப்பானியம் மூன்றிலும் கற்போம்."
+  );
+
+  let lead = "";
+
+  for (let index = 0; index < concepts.length; index++) {
+    lead = await runConcept(concepts[index], index, lead);
   }
 
-  let leadTamil = "";
-
-  for (let index = 0; index < items.length; index++) {
-    const item = items[index];
-
-    await speakTeachingTurn(
-      lesson,
-      item,
-      index,
-      leadTamil
-    );
-
-    let heard = await listenForChild(lesson);
-    let heardKind = describeHeard(heard);
-
-    if (heardKind === "none") {
-      await speakRetryTurn(lesson, item);
-      heard = await listenForChild(lesson);
-      heardKind = describeHeard(heard);
-    }
-
-    leadTamil = heardKind === "voice"
-      ? "சூப்பர்."
-      : "பரவாயில்லை.";
-  }
-
-  if (demo) {
-    await speakTamil(
-      (leadTamil || "சூப்பர்.") +
-      " Demo முடிந்தது."
-    );
-  } else {
-    await speakTamil(
-      (leadTamil || "சூப்பர்.") +
-      " இன்று ஐந்து வார்த்தைகள் முடிந்தது."
-    );
-  }
+  await speakTamil(
+    (lead || "சூப்பர்.") +
+    (demo
+      ? " Demo முடிந்தது."
+      : " இன்று ஐந்து பொருட்கள் முடிந்தது.")
+  );
 
   console.log("");
   console.log("Lesson complete.");
-  console.log("Gini listened after every target word.");
-  console.log("No pronunciation score was invented.");
 }
 
 async function main() {
   const command = String(process.argv[2] || "status").toLowerCase();
-  const language = String(process.argv[3] || "hi").toLowerCase();
 
   if (command === "status") {
     await status();
@@ -355,12 +422,12 @@ async function main() {
   }
 
   if (command === "demo") {
-    await runLesson(language, 1, true);
+    await runLesson(1, true);
     return;
   }
 
   if (command === "lesson") {
-    await runLesson(language, null, false);
+    await runLesson(null, false);
     return;
   }
 
