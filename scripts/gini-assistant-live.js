@@ -853,6 +853,7 @@ API.onopenstream = function (conn, channel, streamid, result) {
   console.log("GINI IS LIVE AND LISTENING");
   console.log('Say: "Gini, turn left."');
   console.log('Say: "Gini, sleep." to stop.');
+  console.log('Say: "Gini, teach me English." for Teacher mode.');
   console.log("");
 };
 
@@ -911,7 +912,7 @@ console.log("Foreground native stream - no hidden background process");
 console.log("Wake word: Gini");
 console.log("VAD threshold:", SPEECH_THRESHOLD_DB, "dB");
 console.log("STT language:", STT_LANGUAGE);
-console.log("Command mode: local fast-path + secure AI fallback");
+console.log("Command mode: local fast-path + Teacher routing + secure AI fallback");
 console.log("AI provider:", AssistantBrain.config.provider, AssistantBrain.config.ollamaModel);
 console.log("Privacy mode:", PRIVACY_MODE ? "ON (temporary audio deleted)" : "OFF");
 console.log("Persistent memory:", AssistantBrain.config.memoryEnabled ? "ON" : "OFF");
