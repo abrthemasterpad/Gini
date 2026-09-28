@@ -22,6 +22,9 @@ const MODERN_TALKBACK = process.env.GINI_TALKBACK_SCRIPT
   : path.join(ROOT, "src", "audio", "talkback.js");
 const VERIFIED_TALKBACK = path.join(ROOT, "gini-say.js");
 const VERIFIED_TALKBACK_WAV = path.join(ROOT, "gini-clean.wav");
+const SPEAKER_MODE = String(
+  process.env.GINI_TEACHER_SPEAKER || "camera"
+).toLowerCase();
 
 fs.mkdirSync(RUNTIME, { recursive: true });
 
@@ -280,6 +283,42 @@ async function playVerifiedGiniSay(wavPath) {
   }
 }
 
+async function playPcWav(wavPath) {
+  const ps = [
+    "-NoProfile",
+    "-ExecutionPolicy", "Bypass",
+    "-Command",
+    "$p=$env:GINI_WAV_PATH; " +
+    "$s=New-Object System.Media.SoundPlayer $p; " +
+    "$s.PlaySync()"
+  ];
+
+  const result = await runProcess(
+    "powershell.exe",
+    ps,
+    {
+      inherit: true,
+      env: {
+        ...process.env,
+        GINI_WAV_PATH: wavPath
+      }
+    }
+  );
+
+  if (result.code !== 0) {
+    throw new Error("Windows speaker playback exited with code " + result.code);
+  }
+}
+
+async function playOutputWav(wavPath) {
+  if (SPEAKER_MODE === "pc" || SPEAKER_MODE === "bluetooth") {
+    await playPcWav(wavPath);
+    return;
+  }
+
+  await playCameraWav(wavPath);
+}
+
 async function playCameraWav(wavPath) {
   // Prefer the path that has already been physically verified on this camera.
   if (fs.existsSync(VERIFIED_TALKBACK)) {
@@ -316,7 +355,7 @@ async function playCameraWav(wavPath) {
 }
 
 
-async function combineSequenceWavs(sources, pauseMs = 180) {
+async function combineSequenceWavs(sources, pauseMs = 180, gainDb = []) {
   if (!Array.isArray(sources) || sources.length === 0) {
     throw new Error("No audio sources supplied for teacher sequence");
   }
@@ -345,10 +384,16 @@ async function combineSequenceWavs(sources, pauseMs = 180) {
   const pauseSeconds = Math.max(0, Number(pauseMs || 0)) / 1000;
 
   sources.forEach((source, index) => {
+    const gain = Number(gainDb[index] || 0);
+    const gainFilter = Number.isFinite(gain) && gain !== 0
+      ? ",volume=" + gain.toFixed(1) + "dB"
+      : "";
+
     filters.push(
       "[" + index + ":a]" +
       "aresample=16000," +
       "aformat=sample_fmts=s16:channel_layouts=mono" +
+      gainFilter +
       "[a" + index + "]"
     );
 
@@ -408,10 +453,11 @@ async function speakSequence(segments, options = {}) {
     generated.push(...results);
     cameraWav = await combineSequenceWavs(
       generated.map(item => item.source),
-      options.pauseMs == null ? 180 : options.pauseMs
+      options.pauseMs == null ? 180 : options.pauseMs,
+      segments.map(segment => Number(segment.gainDb || 0))
     );
 
-    await playCameraWav(cameraWav);
+    await playOutputWav(cameraWav);
 
     return generated.map(item => item.job);
   } finally {
@@ -434,7 +480,7 @@ async function speak(options) {
 
   try {
     cameraWav = await convertForCamera(generated.source);
-    await playCameraWav(cameraWav);
+    await playOutputWav(cameraWav);
 
     return generated.job;
   } finally {
@@ -453,10 +499,12 @@ module.exports = {
   synthesizeWav,
   convertForCamera,
   playCameraWav,
+  playPcWav,
   talkbackStatus,
   speakSequence,
   speak,
   config: {
-    rebuildoUrl: REBUILDO_URL
+    rebuildoUrl: REBUILDO_URL,
+    speakerMode: SPEAKER_MODE
   }
 };
