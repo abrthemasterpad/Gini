@@ -8,6 +8,7 @@ require("./gini-env");
 const Voice = require("./gini-teacher-voice");
 const Listen = require("./gini-teacher-listen");
 const Curriculum = require("./gini-teacher-curriculum");
+const Expression = require("./gini-expression");
 
 const ROOT = path.resolve(__dirname, "..");
 const REBUILDO_START = path.join(__dirname, "gini-rebuildo-start.ps1");
