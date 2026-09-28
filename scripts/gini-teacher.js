@@ -1,5 +1,8 @@
 "use strict";
 
+const path = require("path");
+const { spawnSync } = require("child_process");
+
 require("./gini-env");
 
 const Voice = require("./gini-teacher-voice");
@@ -12,6 +15,8 @@ const TAMIL_DELIVERY = process.env.GINI_TEACHER_TAMIL_DELIVERY || "natural";
 const CHILD_LISTEN_SECONDS = Number(
   process.env.GINI_TEACHER_LISTEN_SECONDS || 2.4
 );
+const ROOT = path.resolve(__dirname, "..");
+const REBUILDO_START = path.join(__dirname, "gini-rebuildo-start.ps1");
 
 function usage() {
   console.log("");
@@ -297,6 +302,41 @@ async function runConcept(concept, index, lead = "") {
   return japanese.lead;
 }
 
+async function ensureRebuildoReady() {
+  let health = await Voice.health();
+
+  if (health.ok) return health;
+
+  console.log("Rebuildo voice server is offline. Starting it automatically...");
+
+  const start = spawnSync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-ExecutionPolicy", "Bypass",
+      "-File", REBUILDO_START
+    ],
+    {
+      cwd: ROOT,
+      stdio: "inherit",
+      windowsHide: true
+    }
+  );
+
+  health = await Voice.health();
+
+  if (!health.ok) {
+    throw new Error(
+      "Rebuildo voice server is not ready at " +
+      Voice.config.rebuildoUrl +
+      ". Startup exit code: " +
+      String(start.status)
+    );
+  }
+
+  return health;
+}
+
 async function status() {
   console.log("=".repeat(68));
   console.log("GINI TEACHER v0.4 - STATUS");
@@ -358,14 +398,7 @@ async function status() {
 }
 
 async function runLesson(limit = null, demo = false) {
-  const health = await Voice.health();
-
-  if (!health.ok) {
-    throw new Error(
-      "Rebuildo voice server is not ready at " +
-      Voice.config.rebuildoUrl
-    );
-  }
+  const health = await ensureRebuildoReady();
 
   const listening = Listen.status();
 
