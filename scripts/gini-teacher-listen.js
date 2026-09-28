@@ -20,10 +20,10 @@ const MODEL = path.join(ROOT, "models", "ggml-base-q5_1.bin");
 const PRIVACY_MODE = process.env.GINI_PRIVACY_MODE !== "0";
 const DEFAULT_MS = Math.max(
   1800,
-  Number(process.env.GINI_TEACHER_LISTEN_MS || 3200)
+  Number(process.env.GINI_TEACHER_LISTEN_MS || 2600)
 );
 const SPEECH_THRESHOLD_DB = Number(
-  process.env.GINI_TEACHER_SPEECH_THRESHOLD_DB || -44
+  process.env.GINI_TEACHER_SPEECH_THRESHOLD_DB || -38
 );
 
 fs.mkdirSync(RUNTIME, { recursive: true });
@@ -90,7 +90,8 @@ function status() {
 
 async function listenOnce({
   language = "auto",
-  seconds = null
+  seconds = null,
+  transcribe = false
 } = {}) {
   const ready = status();
 
@@ -182,11 +183,31 @@ async function listenOnce({
     return {
       ok: true,
       heardAudio: false,
+      voiceDetected: false,
       heardSpeech: false,
       text: "",
       maxDb,
       audioFrames: Number(meta.audioFrames || 0)
     };
+  }
+
+  // Repeat-after-me lessons only need turn detection to continue naturally.
+  // Do NOT make the child wait for Whisper unless explicit debug transcription
+  // is enabled. This also prevents small-model hallucinations from being
+  // treated as proof of correct pronunciation.
+  if (!transcribe) {
+    const result = {
+      ok: true,
+      heardAudio: true,
+      voiceDetected: true,
+      heardSpeech: true,
+      text: "",
+      transcriptSkipped: true,
+      maxDb,
+      audioFrames: Number(meta.audioFrames || 0)
+    };
+    cleanup();
+    return result;
   }
 
   try { fs.unlinkSync(TRANSCRIPT); } catch {}
@@ -195,13 +216,8 @@ async function listenOnce({
     ? language
     : "auto";
 
-  const promptByLanguage = {
-    hi: "A child is repeating a short Hindi learning word or phrase. Transcribe only what the child says.",
-    ja: "A child is repeating a short Japanese learning word or phrase. Transcribe only what the child says.",
-    ta: "A child is speaking a short Tamil phrase. Transcribe only what the child says.",
-    en: "A child is speaking a short English phrase. Transcribe only what the child says."
-  };
-
+  // No Whisper prompt here. The earlier prototype's instruction prompt could
+  // leak into the transcript ("Transcribe only what the child says").
   const whisper = await runProcess(WHISPER, [
     "-m", MODEL,
     "-f", WAV,
@@ -211,7 +227,6 @@ async function listenOnce({
     "--no-timestamps",
     "--output-txt",
     "--output-file", TRANSCRIPT_BASE,
-    "--prompt", promptByLanguage[lang] || "Transcribe only the short phrase spoken by the child.",
     "--no-prints"
   ]);
 
@@ -221,9 +236,14 @@ async function listenOnce({
     text = fs.readFileSync(TRANSCRIPT, "utf8").trim();
   }
 
+  // Reject known instruction leakage and implausibly long one-word responses.
+  const leak = /transcribe only|child says|speech recognition/i.test(text);
+  if (leak || text.length > 120) text = "";
+
   const result = {
     ok: true,
-    heardAudio,
+    heardAudio: true,
+    voiceDetected: true,
     heardSpeech: Boolean(text),
     text,
     maxDb,
