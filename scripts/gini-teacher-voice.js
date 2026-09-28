@@ -228,7 +228,7 @@ async function convertForCamera(source) {
     "-loglevel", "error",
     "-i", source,
     "-ac", "1",
-    "-ar", String(outputRate),
+    "-ar", "16000",
     "-c:a", "pcm_s16le",
     target
   ]);
@@ -422,7 +422,7 @@ async function combineSequenceWavs(sources, pauseMs = 180, gainDb = []) {
     "-filter_complex", filters.join(";"),
     "-map", "[out]",
     "-ac", "1",
-    "-ar", "16000",
+    "-ar", String(outputRate),
     "-c:a", "pcm_s16le",
     target
   );
