@@ -580,8 +580,8 @@ async function handleApi(req, res, pathname) {
     const task = startExclusive(
       "live-assistant",
       "node.exe",
-      [path.join(ROOT, "scripts", "gini-assistant-live.js")],
-      { env: { GINI_SPEAKER_MODE: "camera" } }
+      [path.join(ROOT, "scripts", "gini-autonomy-loop.js")],
+      { timeoutMs: 0, env: { GINI_TEACHER_SPEAKER: "camera" } }
     );
 
     sendJson(res, 202, { ok: true, task });
