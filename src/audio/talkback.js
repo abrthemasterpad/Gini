@@ -4,6 +4,28 @@ const path = require('node:path');
 const { performance } = require('node:perf_hooks');
 
 const root = path.resolve(__dirname, '../..');
+
+const FRAME_MS = Math.max(
+  18,
+  Math.min(24, Number(process.env.GINI_TALKBACK_FRAME_MS || 20))
+);
+const MIN_FRAME_GAP_MS = Math.max(
+  6,
+  Math.min(FRAME_MS, Number(process.env.GINI_TALKBACK_MIN_GAP_MS || 12))
+);
+const PREROLL_FRAMES = Math.max(
+  2,
+  Math.min(10, Number(process.env.GINI_TALKBACK_PREROLL_FRAMES || 5))
+);
+const TAIL_FRAMES = Math.max(
+  2,
+  Math.min(10, Number(process.env.GINI_TALKBACK_TAIL_FRAMES || 5))
+);
+const AUDIO_GAIN = Math.max(
+  0.55,
+  Math.min(1.0, Number(process.env.GINI_TALKBACK_GAIN || 0.85))
+);
+
 function config() {
   const file = path.join(root, '.env');
   if (fs.existsSync(file)) {
@@ -49,7 +71,10 @@ function alaw(sample) {
 function encode(pcm) {
   const out = Buffer.alloc(pcm.length / 4);
   for (let i = 0; i < out.length; i++) {
-    const sample = Math.round(((pcm.readInt16LE(i * 4) + pcm.readInt16LE(i * 4 + 2)) / 2) * 0.85);
+    const sample = Math.round(
+      ((pcm.readInt16LE(i * 4) + pcm.readInt16LE(i * 4 + 2)) / 2) *
+      AUDIO_GAIN
+    );
     out[i] = alaw(sample);
   }
   return out;
@@ -98,18 +123,75 @@ async function main() {
     clearTimeout(timeout);
     (async () => {
       const silence = Buffer.alloc(160, 0xD5);
-      for (let n = 0; n < 5; n++) { frame(silence); await sleep(20); }
-      const start = performance.now();
+      const callReadyAt = performance.now();
+
+      for (let n = 0; n < PREROLL_FRAMES; n++) {
+        frame(silence);
+        await sleep(FRAME_MS);
+      }
+
+      const audioStartedAt = performance.now();
       let count = 0;
+      let maxLateMs = 0;
+      let lastFrameAt = null;
+      let minObservedGapMs = Infinity;
+
       for (let offset = 0; offset < audio.length; offset += 160) {
         const bytes = Buffer.alloc(160, 0xD5);
         audio.copy(bytes, 0, offset, Math.min(offset + 160, audio.length));
+
+        const beforeSend = performance.now();
+
+        if (lastFrameAt != null) {
+          minObservedGapMs = Math.min(
+            minObservedGapMs,
+            beforeSend - lastFrameAt
+          );
+        }
+
         frame(bytes);
+        lastFrameAt = performance.now();
         count++;
-        await sleep(Math.max(0, start + count * 20 - performance.now()));
+
+        const targetAt = audioStartedAt + count * FRAME_MS;
+        const lateBy = performance.now() - targetAt;
+        maxLateMs = Math.max(maxLateMs, lateBy);
+
+        // Never burst multiple 20 ms audio frames back-to-back to "catch up".
+        // The old zero-delay catch-up path could sound like tremolo/vibration
+        // on the tested low-cost camera speaker.
+        const delay = Math.max(
+          MIN_FRAME_GAP_MS,
+          targetAt - performance.now()
+        );
+
+        await sleep(delay);
       }
-      for (let n = 0; n < 5; n++) { frame(silence); await sleep(20); }
+
+      for (let n = 0; n < TAIL_FRAMES; n++) {
+        frame(silence);
+        await sleep(FRAME_MS);
+      }
+
+      const finishedAt = performance.now();
       await sleep(300);
+
+      console.log(
+        'GINI TALKBACK METRICS:',
+        JSON.stringify({
+          frames: count,
+          frameMs: FRAME_MS,
+          minFrameGapMs: MIN_FRAME_GAP_MS,
+          observedMinGapMs: Number.isFinite(minObservedGapMs)
+            ? Number(minObservedGapMs.toFixed(2))
+            : null,
+          maxLateMs: Number(maxLateMs.toFixed(2)),
+          audioSendMs: Number((finishedAt - audioStartedAt).toFixed(1)),
+          callToAudioMs: Number((audioStartedAt - callReadyAt).toFixed(1)),
+          gain: AUDIO_GAIN
+        })
+      );
+
       console.log('Speech sent to camera.');
       finish(0);
     })().catch(err => finish(1, err.message));
