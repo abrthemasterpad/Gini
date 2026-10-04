@@ -27,6 +27,10 @@ const SPEECH_THRESHOLD_DB = Number(process.env.GINI_SPEECH_THRESHOLD_DB || -36);
 const STT_LANGUAGE = process.env.GINI_STT_LANGUAGE || "en";
 const AI_ENABLED = process.env.GINI_AI_ENABLED !== "0";
 const PRIVACY_MODE = process.env.GINI_PRIVACY_MODE !== "0";
+const POST_SPEECH_ECHO_GUARD_MS = Math.max(
+  300,
+  Math.min(2000, Number(process.env.GINI_ECHO_GUARD_MS || 800))
+);
 const NATIVE_PTZ_SPEED = Math.max(
   1,
   Math.min(5, Number(process.env.GINI_NATIVE_PTZ_SPEED || 1))
@@ -378,9 +382,15 @@ async function speakReply(reply, sleepAfter = false) {
 
   audioFrames = [];
   firstBufferedAt = 0;
-  await sleep(600);
+  await sleep(POST_SPEECH_ECHO_GUARD_MS);
+  audioFrames = [];
+  firstBufferedAt = 0;
   suppressAudio = false;
-  console.log("Listening continues.");
+  console.log(
+    "Listening continues after " +
+    POST_SPEECH_ECHO_GUARD_MS +
+    "ms echo guard."
+  );
 }
 
 async function performTeacherSession(language) {
@@ -499,10 +509,13 @@ async function transcribeWindow(frames) {
     "-t", "4",
     "--no-gpu",
     "--no-timestamps",
+    "--no-fallback",
+    "--temperature", "0",
+    "--beam-size", "5",
+    "--max-len", "48",
+    "--suppress-nst",
     "--output-txt",
     "--output-file", TRANSCRIPT_BASE,
-    "--prompt",
-    "The wake word is Gini, spelled G-i-n-i. Preserve short commands exactly. Common phrases: Gini turn left, Gini turn right, Gini look up, Gini look down, Gini can you hear me, Gini are you there, Gini sleep. The wake word may also sound like Genie, Jeanie, Ginie, Ginny or Jini.",
     "--no-prints"
   ]);
 
@@ -512,7 +525,12 @@ async function transcribeWindow(frames) {
     return { quiet: false, maxDb, text: "" };
   }
 
-  const text = fs.readFileSync(TRANSCRIPT, "utf8").trim();
+  let text = fs.readFileSync(TRANSCRIPT, "utf8").trim();
+
+  // Instruction-like leakage and long hallucinations must never arm Gini.
+  const leak = /transcribe only|speech recognition|wake word is gini|common phrases/i.test(text);
+  if (leak || text.length > 160) text = "";
+
   cleanupTransientAudio();
   return { quiet: false, maxDb, text };
 }
@@ -597,9 +615,20 @@ async function restartListeningConnection() {
     while (Date.now() < deadline) {
       if (opened && totalAudioFrames > audioBefore) {
         reconnectingAfterTalkback = false;
-        suppressAudio = false;
         audioFrames = [];
         firstBufferedAt = 0;
+
+        console.log(
+          "MICROPHONE STREAM RESUMED - echo guard " +
+          POST_SPEECH_ECHO_GUARD_MS +
+          "ms"
+        );
+
+        await sleep(POST_SPEECH_ECHO_GUARD_MS);
+
+        audioFrames = [];
+        firstBufferedAt = 0;
+        suppressAudio = false;
 
         console.log("MICROPHONE RESUMED - listening again.");
         return true;
@@ -1080,6 +1109,7 @@ console.log("==================================================");
 console.log("Foreground native stream - no hidden background process");
 console.log("Wake word: Gini");
 console.log("VAD threshold:", SPEECH_THRESHOLD_DB, "dB");
+console.log("Post-speech echo guard:", POST_SPEECH_ECHO_GUARD_MS, "ms");
 console.log("STT language:", STT_LANGUAGE);
 console.log("Command mode: local fast-path + Teacher routing + secure AI fallback");
 console.log("AI provider:", AssistantBrain.config.provider, AssistantBrain.config.ollamaModel);
