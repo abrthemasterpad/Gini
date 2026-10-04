@@ -95,11 +95,14 @@ async function main() {
   console.log("");
 
   let awaitingCommandUntil = 0;
+  let activeSessionUntil = 0;
+
+  console.log("AUTONOMY READY - listening in 4 second turns.");
 
   while (!stopping) {
     const heard = await Listen.listenOnce({
       language: "auto",
-      seconds: 2.8,
+      seconds: 4.0,
       transcribe: true
     });
 
@@ -123,22 +126,23 @@ async function main() {
     const wake = extractWake(heard.text);
 
     if (!wake.wake) {
-      if (Date.now() < awaitingCommandUntil) {
+      if (Date.now() < awaitingCommandUntil || Date.now() < activeSessionUntil) {
         wake.wake = true;
         wake.command = normalize(heard.text);
         awaitingCommandUntil = 0;
         console.log("AUTONOMY FOLLOW-UP:", wake.command);
       } else {
-        console.log("AUTONOMY: no wake word -> ignored");
+        console.log("AUTONOMY: no wake word -> ignored:", heard.text);
         continue;
       }
     }
 
     console.log("AUTONOMY WAKE: OK");
+    activeSessionUntil = Date.now() + 15000;
 
     if (!wake.command) {
-      awaitingCommandUntil = Date.now() + 8000;
-      console.log("AUTONOMY: waiting for command after wake word");
+      awaitingCommandUntil = Date.now() + 10000;
+      console.log("AUTONOMY: wake heard; say the command within 10 seconds");
       continue;
     }
 
@@ -154,8 +158,8 @@ async function main() {
     await performActions(decision.actions || []);
 
     if (!stopping) {
-      console.log("AUTONOMY: listening again");
-      await sleep(500);
+      console.log("AUTONOMY: listening again after camera audio settles");
+      await sleep(1400);
     }
   }
 
