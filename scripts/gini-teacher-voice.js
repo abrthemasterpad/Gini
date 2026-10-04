@@ -25,6 +25,8 @@ const VERIFIED_TALKBACK_WAV = path.join(ROOT, "gini-clean.wav");
 const SPEAKER_MODE = String(
   process.env.GINI_TEACHER_SPEAKER || "camera"
 ).toLowerCase();
+const PREFER_MODERN_TALKBACK =
+  process.env.GINI_PREFER_MODERN_TALKBACK === "1";
 
 fs.mkdirSync(RUNTIME, { recursive: true });
 
@@ -320,14 +322,7 @@ async function playOutputWav(wavPath) {
 }
 
 async function playCameraWav(wavPath) {
-  // Prefer the path that has already been physically verified on this camera.
-  if (fs.existsSync(VERIFIED_TALKBACK)) {
-    await playVerifiedGiniSay(wavPath);
-    return;
-  }
-
-  // Future modular runtime fallback.
-  if (fs.existsSync(MODERN_TALKBACK)) {
+  async function runModern() {
     const result = await runProcess(
       "node.exe",
       [MODERN_TALKBACK],
@@ -343,6 +338,23 @@ async function playCameraWav(wavPath) {
     if (result.code !== 0) {
       throw new Error("Gini camera talkback exited with code " + result.code);
     }
+  }
+
+  // Control Center can explicitly exercise the smoother pacing candidate
+  // without silently replacing the already verified local runtime.
+  if (PREFER_MODERN_TALKBACK && fs.existsSync(MODERN_TALKBACK)) {
+    console.log("GINI TALKBACK: smooth-pacing candidate");
+    await runModern();
+    return;
+  }
+
+  if (fs.existsSync(VERIFIED_TALKBACK)) {
+    await playVerifiedGiniSay(wavPath);
+    return;
+  }
+
+  if (fs.existsSync(MODERN_TALKBACK)) {
+    await runModern();
     return;
   }
 
@@ -353,7 +365,6 @@ async function playCameraWav(wavPath) {
     MODERN_TALKBACK
   );
 }
-
 
 async function combineSequenceWavs(sources, pauseMs = 180, gainDb = []) {
   const outputRate =
@@ -513,6 +524,7 @@ module.exports = {
   speak,
   config: {
     rebuildoUrl: REBUILDO_URL,
-    speakerMode: SPEAKER_MODE
+    speakerMode: SPEAKER_MODE,
+    preferModernTalkback: PREFER_MODERN_TALKBACK
   }
 };
