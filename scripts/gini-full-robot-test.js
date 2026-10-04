@@ -118,6 +118,16 @@ function heardReply(language) {
   return "I heard your voice.";
 }
 
+function noVoiceReply(language) {
+  if (language === "ta") {
+    return "தெளிவான குரல் கிடைக்கவில்லை. மீதமுள்ள சோதனைகளை தொடர்கிறேன்.";
+  }
+  if (language === "hi") {
+    return "मुझे साफ़ आवाज़ नहीं मिली। बाकी परीक्षण जारी रखता हूँ।";
+  }
+  return "I did not detect a clear voice. The test will continue with the remaining modules.";
+}
+
 async function main() {
   const args = parseArgs();
   const results = [];
@@ -139,12 +149,7 @@ async function main() {
       audioFrames: heard && heard.audioFrames
     }));
 
-    await Say.say(
-      args.language,
-      args.language === "en"
-        ? "I did not detect a clear voice. The test will continue with the remaining modules."
-        : heardReply(args.language)
-    );
+    await Say.say(args.language, noVoiceReply(args.language));
   } else {
     results.push(stage("hearing", "passed", {
       text: heard.text || "",
