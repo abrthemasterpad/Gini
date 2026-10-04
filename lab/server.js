@@ -18,6 +18,7 @@ const REBUILDO_URL = (process.env.GINI_REBUILDO_URL || "http://127.0.0.1:8787").
 const OLLAMA_URL = (process.env.GINI_OLLAMA_URL || "http://127.0.0.1:11434").replace(/\/$/, "");
 
 let currentTask = null;
+let lastTask = null;
 const sseClients = new Set();
 const recentLogs = [];
 
@@ -201,6 +202,7 @@ function startExclusive(label, command, args, options = {}) {
     label,
     child,
     startedAt: now(),
+    startedMs: Date.now(),
     timeout: null
   };
 
@@ -226,8 +228,21 @@ function startExclusive(label, command, args, options = {}) {
   }
 
   child.on("close", code => {
+    let durationMs = null;
+
     if (currentTask && currentTask.id === id) {
       if (currentTask.timeout) clearTimeout(currentTask.timeout);
+
+      durationMs = Date.now() - currentTask.startedMs;
+      lastTask = {
+        id,
+        label,
+        code,
+        startedAt: currentTask.startedAt,
+        finishedAt: now(),
+        durationMs
+      };
+
       currentTask = null;
     }
 
@@ -235,7 +250,8 @@ function startExclusive(label, command, args, options = {}) {
       state: "finished",
       id,
       label,
-      code
+      code,
+      durationMs
     });
   });
 
@@ -295,6 +311,17 @@ function behavior(value) {
   return name;
 }
 
+function headDirection(value) {
+  const name = String(value || "").toLowerCase();
+  const allowed = ["up", "down", "left", "right"];
+
+  if (!allowed.includes(name)) {
+    throw new Error("head direction must be up, down, left or right");
+  }
+
+  return name;
+}
+
 async function statusPayload() {
   const [camera, rtsp, rebuildo, ollama] = await Promise.all([
     tcpCheck(CAMERA_IP, CAMERA_PORT),
@@ -303,6 +330,18 @@ async function statusPayload() {
     httpCheck(OLLAMA_URL + "/api/tags")
   ]);
 
+  const hearingFiles = [
+    path.join(ROOT, "scripts", "gini-capture-mic.js"),
+    path.join(ROOT, "tools", "whisper", "Release", "whisper-cli.exe"),
+    path.join(ROOT, "models", "ggml-base-q5_1.bin")
+  ];
+
+  const hearingReady = hearingFiles.every(file => fs.existsSync(file));
+  const cameraReady = Boolean(camera && camera.ok);
+  const visionReady = Boolean(rtsp && rtsp.ok);
+  const speechReady = cameraReady && Boolean(rebuildo && rebuildo.ok);
+  const brainReady = Boolean(ollama && ollama.ok);
+
   return {
     ok: true,
     camera,
@@ -310,10 +349,46 @@ async function statusPayload() {
     rebuildo,
     ollama,
     task: taskSummary(),
+    lastTask,
+    modules: {
+      camera: {
+        ready: cameraReady,
+        detail: cameraReady ? "native SDK reachable" : String(camera.detail || "camera unavailable")
+      },
+      hearing: {
+        ready: cameraReady && hearingReady,
+        detail: hearingReady ? "capture + whisper prerequisites present" : "local hearing prerequisite missing"
+      },
+      vision: {
+        ready: visionReady,
+        detail: visionReady ? "RTSP/go2rtc reachable" : "vision stream unavailable"
+      },
+      speech: {
+        ready: speechReady,
+        detail: speechReady ? "camera + Rebuildo ready" : "camera or Rebuildo unavailable"
+      },
+      head: {
+        ready: cameraReady,
+        detail: cameraReady ? "bounded native PTZ available" : "camera unavailable"
+      },
+      teacher: {
+        ready: speechReady && hearingReady,
+        detail: speechReady && hearingReady ? "voice + hearing prerequisites ready" : "teacher prerequisite missing"
+      },
+      autonomy: {
+        ready: cameraReady && hearingReady,
+        degraded: !brainReady,
+        detail: brainReady
+          ? "local command loop + Ollama available"
+          : "local command loop ready; AI fallback unavailable"
+      }
+    },
     policies: {
       oneCameraOwner: true,
       safePtzOnly: true,
       cgiPtzDisabled: true,
+      maxControlCenterVisionMoves: 4,
+      maxFullTestVisionMoves: 2,
       teacherLanguages: ["ta", "en", "hi"],
       japaneseParked: true
     }
@@ -371,6 +446,27 @@ async function handleApi(req, res, pathname) {
       "node.exe",
       [path.join(ROOT, "scripts", "gini-expression.js"), name],
       { timeoutMs: 18000 }
+    );
+
+    sendJson(res, 202, { ok: true, task });
+    return true;
+  }
+
+  if (req.method === "POST" && pathname === "/api/head") {
+    const body = await readJson(req);
+    const direction = headDirection(body.direction);
+    const pulseMs = Math.max(60, Math.min(140, Number(body.pulseMs || 90)));
+
+    const task = startExclusive(
+      "head:" + direction,
+      "node.exe",
+      [
+        path.join(ROOT, "scripts", "gini-head-pulse.js"),
+        direction,
+        "--pulse-ms",
+        String(pulseMs)
+      ],
+      { timeoutMs: 16000 }
     );
 
     sendJson(res, 202, { ok: true, task });
@@ -487,6 +583,33 @@ async function handleApi(req, res, pathname) {
     return true;
   }
 
+  if (req.method === "POST" && pathname === "/api/full-test") {
+    const body = await readJson(req);
+    const lang = language(body.language);
+    const liveVision = Boolean(body.liveVision);
+
+    const args = [
+      path.join(ROOT, "scripts", "gini-full-robot-test.js"),
+      "--language",
+      lang
+    ];
+
+    if (liveVision) args.push("--live-vision");
+
+    const task = startExclusive(
+      liveVision ? "full-robot-test:live-vision" : "full-robot-test:dry-vision",
+      "node.exe",
+      args,
+      {
+        timeoutMs: 150000,
+        env: { GINI_TEACHER_SPEAKER: "camera" }
+      }
+    );
+
+    sendJson(res, 202, { ok: true, task });
+    return true;
+  }
+
   if (req.method === "POST" && pathname === "/api/vision/doctor") {
     const task = startExclusive(
       "vision-doctor",
@@ -513,6 +636,28 @@ async function handleApi(req, res, pathname) {
         path.join(ROOT, "scripts", "gini-vision-track.py")
       ],
       { timeoutMs: 9000 }
+    );
+
+    sendJson(res, 202, { ok: true, task });
+    return true;
+  }
+
+  if (req.method === "POST" && pathname === "/api/vision/live") {
+    const task = startExclusive(
+      "vision-live-bounded",
+      "py.exe",
+      [
+        "-3",
+        path.join(ROOT, "scripts", "gini-vision-track.py"),
+        "--live",
+        "--live-seconds", "20",
+        "--max-live-moves", "4",
+        "--pulse-ms", "85",
+        "--stable-frames", "3",
+        "--cooldown-ms", "900",
+        "--post-move-settle-ms", "1000"
+      ],
+      { timeoutMs: 28000 }
     );
 
     sendJson(res, 202, { ok: true, task });
@@ -572,9 +717,9 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log("==================================================");
-  console.log("GINI LAB v0.1");
+  console.log("GINI CONTROL CENTER v0.2");
   console.log("==================================================");
-  console.log("Local robot development console");
+  console.log("Local robot control + staged diagnostics");
   console.log("URL: http://127.0.0.1:" + PORT);
   console.log("One camera-owner policy: ON");
   console.log("CGI PTZ: DISABLED");
