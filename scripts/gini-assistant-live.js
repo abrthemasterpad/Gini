@@ -23,8 +23,8 @@ const USER = process.env.GINI_CAMERA_USER || "admin";
 const PASS = process.env.GINI_CAMERA_PASSWORD || "";
 const STREAM = Number(process.env.GINI_CAMERA_STREAM || 0);
 
-const SPEECH_THRESHOLD_DB = Number(process.env.GINI_SPEECH_THRESHOLD_DB || -36);
-const STT_LANGUAGE = process.env.GINI_STT_LANGUAGE || "en";
+const SPEECH_THRESHOLD_DB = Number(process.env.GINI_SPEECH_THRESHOLD_DB || -38);
+const STT_LANGUAGE = process.env.GINI_STT_LANGUAGE || "auto";
 const AI_ENABLED = process.env.GINI_AI_ENABLED !== "0";
 const PRIVACY_MODE = process.env.GINI_PRIVACY_MODE !== "0";
 const POST_SPEECH_ECHO_GUARD_MS = Math.max(
@@ -496,6 +496,7 @@ async function transcribeWindow(frames) {
   const maxDb = m ? Number(m[1]) : -100;
 
   if (maxDb < SPEECH_THRESHOLD_DB) {
+    console.log("AUTONOMY VAD: quiet", maxDb.toFixed(1), "dB threshold=" + SPEECH_THRESHOLD_DB);
     cleanupTransientAudio();
     return { quiet: true, maxDb, text: "" };
   }
@@ -526,6 +527,7 @@ async function transcribeWindow(frames) {
   }
 
   let text = fs.readFileSync(TRANSCRIPT, "utf8").trim();
+  console.log("AUTONOMY STT RAW:", text || "(empty)");
 
   // Instruction-like leakage and long hallucinations must never arm Gini.
   const leak = /transcribe only|speech recognition|wake word is gini|common phrases/i.test(text);
