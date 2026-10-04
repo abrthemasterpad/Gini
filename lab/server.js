@@ -516,7 +516,12 @@ async function handleApi(req, res, pathname) {
       ],
       {
         timeoutMs: 45000,
-        env: { GINI_TEACHER_SPEAKER: "camera" }
+        env: {
+          GINI_TEACHER_SPEAKER: "camera",
+          GINI_PREFER_MODERN_TALKBACK: "1",
+          GINI_TALKBACK_FRAME_MS: "20",
+          GINI_TALKBACK_MIN_GAP_MS: "12"
+        }
       }
     );
 
