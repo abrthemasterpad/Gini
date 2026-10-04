@@ -576,6 +576,24 @@ async function handleApi(req, res, pathname) {
     return true;
   }
 
+  if (req.method === "POST" && pathname === "/api/assistant/probe") {
+    const task = startExclusive(
+      "autonomy-probe",
+      "node.exe",
+      [path.join(ROOT, "scripts", "gini-autonomy-probe.js")],
+      {
+        timeoutMs: 90000,
+        env: {
+          GINI_TEACHER_SPEAKER: "camera",
+          GINI_PREFER_MODERN_TALKBACK: "1"
+        }
+      }
+    );
+
+    sendJson(res, 202, { ok: true, task });
+    return true;
+  }
+
   if (req.method === "POST" && pathname === "/api/assistant/start") {
     const task = startExclusive(
       "live-assistant",
