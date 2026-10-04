@@ -27,11 +27,13 @@ const SPEECH_THRESHOLD_DB = Number(process.env.GINI_SPEECH_THRESHOLD_DB || -36);
 const STT_LANGUAGE = process.env.GINI_STT_LANGUAGE || "en";
 const AI_ENABLED = process.env.GINI_AI_ENABLED !== "0";
 const PRIVACY_MODE = process.env.GINI_PRIVACY_MODE !== "0";
-const STEP = Number(process.env.GINI_PTZ_STEP || 1);
-const NATIVE_PTZ_PARAM = 6;
-const NATIVE_PTZ_MOVE_MS = Math.max(
-  100,
-  Number(process.env.GINI_NATIVE_PTZ_MOVE_MS || 1200)
+const NATIVE_PTZ_SPEED = Math.max(
+  1,
+  Math.min(5, Number(process.env.GINI_NATIVE_PTZ_SPEED || 1))
+);
+const NATIVE_PTZ_PULSE_MS = Math.max(
+  60,
+  Math.min(180, Number(process.env.GINI_NATIVE_PTZ_PULSE_MS || 110))
 );
 
 const FFMPEG = "ffmpeg.exe";
@@ -75,6 +77,8 @@ let lastHandledAt = 0;
 let awaitingCommandUntil = 0;
 let reconnectingAfterTalkback = false;
 let closeStreamResolve = null;
+let ptzPending = null;
+let ptzWatchdog = null;
 
 const wakeAliases = ["gini", "ginie", "jeanie", "genie", "ginny", "jini", "jenny"];
 
@@ -632,6 +636,104 @@ async function restartListeningConnection() {
   return false;
 }
 
+function clearPtzWatchdog() {
+  if (ptzWatchdog) {
+    clearTimeout(ptzWatchdog);
+    ptzWatchdog = null;
+  }
+}
+
+function emergencyPtzStop(reason) {
+  try {
+    Player.ptz_ctrl("", IP, 0, 0, 0);
+    console.log("PTZ EMERGENCY STOP:", reason);
+  } catch {}
+}
+
+function finishPtzPending(ok, detail) {
+  clearPtzWatchdog();
+
+  if (!ptzPending) return;
+
+  if (ptzPending.moveTimer) {
+    clearTimeout(ptzPending.moveTimer);
+  }
+
+  const resolve = ptzPending.resolve;
+  ptzPending = null;
+  resolve({ ok, detail });
+}
+
+function armPtzWatchdog(phase, ms) {
+  clearPtzWatchdog();
+
+  ptzWatchdog = setTimeout(() => {
+    if (!ptzPending) return;
+
+    console.error("PTZ TIMEOUT:", phase);
+    emergencyPtzStop("timeout-" + phase);
+    finishPtzPending(false, "timeout-" + phase);
+  }, ms);
+}
+
+API.onptzresult = function (_conn, result) {
+  if (!ptzPending) {
+    console.log("PTZ STRAY RESULT:", result);
+    return;
+  }
+
+  if (ptzPending.phase === "wait-move-ack") {
+    if (result !== 0) {
+      emergencyPtzStop("move-rejected");
+      finishPtzPending(false, "move-result-" + result);
+      return;
+    }
+
+    console.log(
+      "PTZ MOVE ACK:",
+      ptzPending.direction,
+      "speed=" + NATIVE_PTZ_SPEED
+    );
+
+    ptzPending.phase = "moving";
+    clearPtzWatchdog();
+
+    ptzPending.moveTimer = setTimeout(() => {
+      if (!ptzPending || ptzPending.phase !== "moving") return;
+
+      ptzPending.phase = "wait-stop-ack";
+      console.log("PTZ STOP SENT");
+
+      Player.ptz_ctrl("", IP, 0, 0, 0);
+      armPtzWatchdog("stop-ack", 2500);
+    }, NATIVE_PTZ_PULSE_MS);
+
+    return;
+  }
+
+  if (ptzPending.phase === "wait-stop-ack") {
+    if (result !== 0) {
+      emergencyPtzStop("stop-rejected");
+      finishPtzPending(false, "stop-result-" + result);
+      return;
+    }
+
+    console.log("PTZ STOP ACK");
+    clearPtzWatchdog();
+
+    setTimeout(() => {
+      if (!ptzPending) return;
+      finishPtzPending(true, "moved-" + ptzPending.direction);
+    }, 180);
+
+    return;
+  }
+
+  if (ptzPending.phase === "moving") {
+    console.log("PTZ EXTRA RESULT:", result);
+  }
+};
+
 async function nativePtz(action) {
   const ptzTypes = {
     up: 2,
@@ -650,22 +752,34 @@ async function nativePtz(action) {
     throw new Error("Native PTZ requires an active Gini live session.");
   }
 
-  const duration = NATIVE_PTZ_MOVE_MS * Math.max(1, Math.min(4, STEP));
+  if (ptzPending) {
+    throw new Error("Native PTZ is already moving.");
+  }
 
   console.log(
-    "NATIVE PTZ:",
+    "SAFE NATIVE PTZ:",
     action,
-    "param=" + NATIVE_PTZ_PARAM,
-    "duration=" + duration + "ms"
+    "speed=" + NATIVE_PTZ_SPEED,
+    "pulse=" + NATIVE_PTZ_PULSE_MS + "ms"
   );
 
-  // Exact CameraSDK demo values, now hardware-verified:
-  // movement types 2/3/4/5 use param=6; STOP uses type=0,param=0.
-  // This native path physically moves Gini and preserves AAC.
-  Player.ptz_ctrl("", IP, 0, type, NATIVE_PTZ_PARAM);
-  await sleep(duration);
-  Player.ptz_ctrl("", IP, 0, 0, 0);
-  await sleep(300);
+  const result = await new Promise(resolve => {
+    ptzPending = {
+      direction: action,
+      phase: "wait-move-ack",
+      resolve,
+      moveTimer: null
+    };
+
+    Player.ptz_ctrl("", IP, 0, type, NATIVE_PTZ_SPEED);
+    armPtzWatchdog("move-ack", 2500);
+  });
+
+  if (!result.ok) {
+    throw new Error("PTZ safety block: " + result.detail);
+  }
+
+  await sleep(180);
 }
 
 async function performCommand(command) {
@@ -825,6 +939,12 @@ function shutdown(reason) {
   if (stopping) return;
   stopping = true;
 
+  clearPtzWatchdog();
+  if (ptzPending) {
+    emergencyPtzStop("assistant-shutdown");
+    finishPtzPending(false, "assistant-shutdown");
+  }
+
   console.log("");
   console.log("Stopping Gini:", reason);
 
@@ -966,7 +1086,8 @@ console.log("AI provider:", AssistantBrain.config.provider, AssistantBrain.confi
 console.log("Privacy mode:", PRIVACY_MODE ? "ON (temporary audio deleted)" : "OFF");
 console.log("Persistent memory:", AssistantBrain.config.memoryEnabled ? "ON" : "OFF");
 console.log("Action limit:", actionLimiter.max, "per minute");
-console.log("PTZ mode: native SDK (physical + mic-safe)");
+console.log("PTZ mode: native SDK bounded pulse + MOVE/STOP acknowledgement");
+console.log("PTZ safety:", "speed=" + NATIVE_PTZ_SPEED, "pulse=" + NATIVE_PTZ_PULSE_MS + "ms");
 console.log("Speaker mode:", SPEAKER_MODE, SPEAKER_MODE === "camera" ? "(Gini camera speaker)" : "(Windows fallback)");
 console.log("");
 
