@@ -1,6 +1,6 @@
 # Gini Teaching Mode V1 — locked build contract
 
-Status: **Day 1 foundation branch**
+Status: **Day 2 hardware-free teaching intelligence complete; physical integration still blocked on syncing the newer local Gini baseline**
 
 Branch: `feat/gini-teaching-mode-v1-day1`
 
@@ -33,29 +33,45 @@ Teaching Mode is not the full OpenMAIC application. We reuse the useful architec
 - One small concept and one understanding check at a time.
 - Stop and pause must remain deterministic local controls.
 - AI-generated plans are data only; they do not get shell, file, browser or arbitrary device actions.
+- If semantic evaluation is unavailable, the result is `uncertain`, never an invented pass/fail.
 
-## Day 1 gate
-
-Day 1 is complete only when all of these are true:
+## Day 1 gate — PASSED
 
 1. `gini-teaching-core.js` validates the lesson schema.
-2. A malformed lesson is rejected without throwing the live runtime into an invalid state.
-3. The deterministic session states cover intro, teaching, question, listening, evaluation, hint, completion and stop.
+2. A malformed lesson is rejected without throwing the runtime into an invalid state.
+3. Deterministic states cover intro, teaching, question, listening, evaluation, hint, completion and stop.
 4. `gini-teaching-planner.js` uses a two-stage outline -> detailed lesson flow and validates the final output before use.
-5. `node scripts/gini-teaching-smoke-test.js` exits successfully.
-6. No existing verified hardware file is modified on this branch.
+5. `node scripts/gini-teaching-smoke-test.js` passes locally and in GitHub Actions.
+6. No existing verified hardware file was modified.
+
+## Day 2 gate — PASSED IN HARDWARE-FREE MODE
+
+Added:
+
+- `gini-teaching-evaluator.js` — understanding-only evaluator with deterministic fast paths and optional local Ollama semantic review.
+- `gini-teaching-runtime.js` — hardware-free lesson executor around the Day 1 state machine.
+- `gini-teaching-day2-test.js` — qualification cases for direct pass, explicit "I don't know", partial understanding, uncertainty, provider failure, negation, silence, hint/retry, stop and complete scripted lessons.
+
+Safety behavior:
+
+- Direct expected-concept matches can pass deterministically.
+- Explicit "I don't know" means the child needs help; it does not trigger shame or a pronunciation judgement.
+- Ambiguous answers may use semantic review.
+- Invalid, unavailable or timed-out semantic review becomes `uncertain`.
+- A transcript containing the target concept under nearby negation is not blindly accepted as a pass.
+- The evaluator judges conceptual meaning only.
 
 ## Five-day readiness gates
 
-### Day 1 — foundation
+### Day 1 — foundation — PASSED
 
 Pure state machine, validated lesson schema, fail-closed local planner adapter, smoke test.
 
-### Day 2 — teaching intelligence
+### Day 2 — teaching intelligence — PASSED IN CI/HARDWARE-FREE MODE
 
-Add a hardware-free runtime around the core. Exercise correct, wrong, partial, uncertain, silence and "I don't know" responses. Add evaluator rules that judge understanding only.
+Hardware-free runtime exercises correct, wrong/needs-help, partial, uncertain, silence and "I don't know" responses. Evaluator rules judge understanding only.
 
-### Day 3 — physical turn loop
+### Day 3 — physical turn loop — NEXT, AFTER BASELINE SYNC
 
 Integrate with the newest verified local Gini mic/STT/talkback baseline. Pass repeated `speak -> listen -> evaluate -> speak` cycles without a stuck talkback or microphone session.
 
