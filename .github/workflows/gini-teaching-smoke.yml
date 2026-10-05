@@ -28,3 +28,5 @@ jobs:
           node-version: "22"
       - name: Run Teaching Mode Day 1 smoke test
         run: node scripts/gini-teaching-smoke-test.js
+      - name: Run Teaching Mode Day 2 intelligence test
+        run: node scripts/gini-teaching-day2-test.js
